@@ -1,0 +1,19 @@
+# Local AI Gateway - Python model sidecar (real CPU/GPU backends).
+# Installed into model-service/.venv with Python 3.11.
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
+numpy
+# Background removal (CPU, onnx)
+rembg
+onnxruntime
+# Object detection (Ultralytics YOLO; pulls torch CPU wheel)
+ultralytics
+# Speech-to-text (CPU via ctranslate2)
+faster-whisper
+
+# optional extras (installed)
+rapidocr-onnxruntime
+kokoro
+soundfile

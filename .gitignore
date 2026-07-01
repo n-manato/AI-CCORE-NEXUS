@@ -1,0 +1,47 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# database (local sqlite)
+*.db
+*.db-journal
+prisma/dev.db
+prisma/dev.db-journal
+
+# env
+.env
+.env*.local
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# python model sidecar
+**/.venv/
+**/__pycache__
+*.pt
+
+# Runtime-generated data
+logs/
+**/logs/
+**/pool_cache/
+**/.phase*_install_done
+*.bak
+
+# Local tool settings
+.claude/settings.local.json

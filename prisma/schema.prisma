@@ -1,0 +1,262 @@
+// Local AI Gateway data model.
+//
+// SQLite is used for local development. The schema avoids native enums and other
+// SQLite-only constructs so it can be moved to PostgreSQL later by only changing
+// the datasource provider/url. Status-like columns are plain strings whose allowed
+// values are defined and validated in src/lib/constants.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("user") // "admin" | "user"
+  status       String   @default("active") // "active" | "disabled"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  apiKeys      ApiKey[]
+  apiAccess    ApiAccess[]
+  usageLogs    UsageLog[]
+  jobs         Job[]
+  auditActions AdminAuditLog[] @relation("AuditAdmin")
+  auditTargets AdminAuditLog[] @relation("AuditTarget")
+  conversations Conversation[]
+  memoryItems   MemoryItem[]
+}
+
+model ApiKey {
+  id           String    @id @default(cuid())
+  userId       String
+  keyHash      String    @unique // sha256 of the raw key, used for lookup/validation
+  keyEncrypted String // AES-256-GCM encrypted raw key, used for owner/admin display
+  keyPrefix    String // e.g. "lag_ab12" for masked display
+  last4        String
+  status       String    @default("active") // "active" | "disabled"
+  createdAt    DateTime  @default(now())
+  revokedAt    DateTime?
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ApiAccess {
+  id      String  @id @default(cuid())
+  userId  String
+  category String // LLM | TTS | STT | Image | Vision | Video | Motion
+  enabled Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@index([userId])
+}
+
+model ApiStatus {
+  id                  String   @id @default(cuid())
+  apiName             String   @unique
+  category            String
+  status              String   @default("Offline") // Online | Offline | Disabled | Not Installed | Error
+  currentModel        String?
+  backend             String?
+  mode                String   @default("Sync") // Real-time | Sync | Job
+  usesGpu             Boolean  @default(true)
+  queueCount          Int      @default(0)
+  runningCount        Int      @default(0)
+  averageResponseTime Float    @default(0) // milliseconds (measured from usage logs)
+  lastChecked         DateTime @default(now())
+  errorCount          Int      @default(0)
+  description         String   @default("")
+  adminDisabled       Boolean  @default(false) // sticky admin override; sync respects it
+}
+
+model UsageLog {
+  id           String   @id @default(cuid())
+  userId       String
+  apiName      String
+  category     String
+  requestCount Int      @default(0)
+  errorCount   Int      @default(0)
+  latencyMs    Int      @default(0) // measured end-to-end latency for the call
+  errorCode    String?  // classified gateway error code on failure (e.g. context_length_exceeded)
+  timestamp    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model Job {
+  id           String    @id @default(cuid())
+  userId       String
+  apiName      String
+  status       String    @default("Waiting") // Waiting | Running | Completed | Failed | Canceled
+  priority     Int       @default(3)
+  progress     Int       @default(0) // 0-100
+  resultPath   String?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model SystemSetting {
+  key   String @id
+  value String
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  adminId      String
+  targetUserId String?
+  action       String
+  beforeValue  String?
+  afterValue   String?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+
+  admin  User  @relation("AuditAdmin", fields: [adminId], references: [id], onDelete: Cascade)
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+}
+
+model ModelRegistry {
+  modelId             String  @id
+  category            String
+  function            String
+  modelName           String
+  backend             String
+  installed           Boolean @default(false)
+  estimatedVramMinGb  Float   @default(0)
+  estimatedVramMaxGb  Float   @default(0)
+  defaultDeviceRule   String  @default("1GPU") // CPU | 1GPU | 2GPU | Disabled | Not Installed
+  multiGpuSupported   Boolean @default(false)
+
+  runtimeConfig ModelRuntimeConfig?
+  runtimeState  ModelRuntimeState?
+}
+
+model ModelRuntimeConfig {
+  modelId            String  @id
+  startupPolicy      String  @default("On Demand") // Always Running | On Demand | Job Queue | Disabled
+  runtimeType        String  @default("Sync") // Real-time | Sync | Job
+  modelSizeClass     String  @default("Medium") // Small | Medium | Large | XLarge
+  enabled            Boolean @default(true)
+  maxConcurrent      Int     @default(1)
+  autoShutdownMinutes Int    @default(15)
+
+  model ModelRegistry @relation(fields: [modelId], references: [modelId], onDelete: Cascade)
+}
+
+model ModelRuntimeState {
+  modelId        String    @id
+  currentStatus  String    @default("Stopped") // Stopped | Loading | Running | Error
+  devicePlan     String    @default("1GPU")
+  actualDevice   String? // e.g. "GPU0", "GPU0+GPU1", "CPU"
+  predictedVramGb Float    @default(0)
+  currentVramMb  Int       @default(0)
+  pid            Int?
+  lastUsedAt     DateTime?
+  lastError      String?
+
+  model ModelRegistry @relation(fields: [modelId], references: [modelId], onDelete: Cascade)
+}
+
+model VramForecastSnapshot {
+  id               String   @id @default(cuid())
+  timestamp        DateTime @default(now())
+  gpu0PredictedGb  Float    @default(0)
+  gpu1PredictedGb  Float    @default(0)
+  totalPredictedGb Float    @default(0)
+  status           String   @default("Safe") // Safe | Caution | Warning | Critical | Over Limit | Invalid Combination
+  reason           String   @default("")
+}
+
+// ---- Conversation / context-management system ----
+//
+// "Store everything, but never send everything to the model." Full history lives
+// here; the context builder (src/lib/context) selects only what fits the model's
+// token budget each turn. See src/lib/context/README.md.
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String?
+  model     String? // default Ollama tag/app-id for this conversation
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  summaries ConversationSummary[]
+
+  @@index([userId])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String // user | assistant | system | tool
+  content        String // raw text; for tool turns this is the JSON-stringified payload
+  tokenCount     Int      @default(0)
+  metadata       String? // JSON: tool_calls, tool_call_id, name, ...
+  compacted      Boolean  @default(false) // true once folded into a summary
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+  @@index([conversationId, compacted])
+}
+
+model ConversationSummary {
+  id             String   @id @default(cuid())
+  conversationId String
+  content        String // structured summary (goal/decisions/constraints/files/errors/next/...)
+  coversUpTo     DateTime // messages with createdAt <= this are represented by this summary
+  messageCount   Int      @default(0)
+  tokenCount     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+}
+
+model MemoryItem {
+  id         String   @id @default(cuid())
+  userId     String? // null = global/project memory
+  scope      String   @default("project") // user | project | reference | feedback
+  key        String // short slug
+  content    String
+  tokenCount Int      @default(0)
+  source     String? // e.g. "manual", "memory/gpu.md"
+  pinned     Boolean  @default(false) // always included regardless of relevance
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([scope])
+}

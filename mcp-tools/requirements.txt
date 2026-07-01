@@ -1,0 +1,5 @@
+mcp
+ddgs
+httpx
+playwright
+pillow

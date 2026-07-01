@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Font stacks (no external font fetch so the build works offline). */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-bg-base text-ink;
+    font-family: var(--font-sans);
+    /* Subtle radial glow background for the futuristic look. */
+    background-image:
+      radial-gradient(900px circle at 12% -10%, rgba(34, 211, 238, 0.07), transparent 45%),
+      radial-gradient(800px circle at 100% 0%, rgba(56, 189, 248, 0.06), transparent 40%);
+    background-attachment: fixed;
+  }
+
+  /* Thin, dark scrollbars to match the theme. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a3c5c transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #2a3c5c;
+    border-radius: 999px;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: linear-gradient(180deg, rgba(22, 33, 58, 0.6), rgba(16, 24, 42, 0.6));
+    backdrop-filter: blur(6px);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
