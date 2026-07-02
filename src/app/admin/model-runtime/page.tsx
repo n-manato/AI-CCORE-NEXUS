@@ -15,7 +15,9 @@ export default async function ModelRuntimePage() {
         description="Edit startup policy, runtime type, size class, enablement and concurrency. Device Plan is system-calculated and read-only. The VRAM forecast updates live."
         actions={<SyncButton />}
       />
-      <RuntimePanel initialRows={rows} />
+      <div className="relative left-1/2 w-[calc(100vw-2rem)] -translate-x-1/2 md:w-[calc(100vw-15rem-3rem)]">
+        <RuntimePanel initialRows={rows} />
+      </div>
     </>
   );
 }

@@ -27,16 +27,16 @@ export async function POST(req: Request) {
       if (await ollamaHasTag(tag)) {
         const buf = Buffer.from(await (file as File).arrayBuffer());
         const text = await ollamaVision(tag, prompt, buf.toString("base64"));
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0 });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model: modelField || DEFAULT_VISION });
         return NextResponse.json({ model: tag, text }, { headers: corsHeaders(req.headers.get("origin")) });
       }
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: modelField || DEFAULT_VISION });
       return NextResponse.json(
         { object: "mock", api: "Vision QA", message: "No vision model is pulled in Ollama yet. Pull qwen2.5vl and Sync." },
         { headers: corsHeaders(req.headers.get("origin")) },
       );
     } catch {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: modelField || DEFAULT_VISION });
       return gatewayError("backend_error");
     }
   } finally {

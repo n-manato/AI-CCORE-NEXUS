@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     try {
       const buf = Buffer.from(await (file as File).arrayBuffer());
       const out = await sidecarRemoveBg(buf);
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: "rembg" });
       return new NextResponse(new Uint8Array(out), {
         status: 200,
         headers: {
@@ -33,12 +33,12 @@ export async function POST(req: Request) {
         },
       });
     } catch {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "rembg" });
       return gatewayError("backend_error");
     }
   }
 
-  await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+  await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: "rembg" });
   return NextResponse.json(
     { object: "mock", api: "Background Removal", message: "Background-removal backend (rembg) not running yet." },
     { headers: corsHeaders(req.headers.get("origin")) },

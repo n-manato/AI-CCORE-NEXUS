@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       return gatewayError("bad_request");
     }
 
-    const ok = () => recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0 });
+    const ok = () => recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model: parsed.data.model });
     const wav = (bytes: Buffer) =>
       new NextResponse(new Uint8Array(bytes), {
         status: 200,
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       await ok();
       return wav(Buffer.from(speech.base64, "base64"));
     } catch {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: parsed.data.model });
       return gatewayError("backend_error");
     }
   } finally {

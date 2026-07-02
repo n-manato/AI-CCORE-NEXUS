@@ -205,7 +205,7 @@ export async function getAdminUsage() {
   for (const u of users) byUser.set(u.id, { counts: emptyCounts(), errors: 0, total: 0, last: null });
 
   const byCategory = emptyCounts();
-  const errorsByApi = new Map<string, number>();
+  const errorsByModel = new Map<string, number>();
   const byDay = new Map<string, { requests: number; errors: number }>();
 
   // Pre-seed 14 day buckets so the chart is continuous.
@@ -214,10 +214,7 @@ export async function getAdminUsage() {
     byDay.set(dayLabel(day), { requests: 0, errors: 0 });
   }
 
-  // Additional per-API metrics + per-category time series.
-  const latencyByApi = new Map<string, { sum: number; count: number }>();
-  const requestsByApi = new Map<string, number>();
-  const errorsByType = new Map<string, number>();
+  // Per-category time series.
   const catByDay = new Map<string, CatCounts>();
   for (let d = 13; d >= 0; d--) {
     const day = new Date(Date.now() - d * 86_400_000);
@@ -234,7 +231,9 @@ export async function getAdminUsage() {
       if (!rec.last || log.timestamp > rec.last) rec.last = log.timestamp;
     }
     if (cat in byCategory) byCategory[cat] += log.requestCount;
-    errorsByApi.set(log.apiName, (errorsByApi.get(log.apiName) ?? 0) + log.errorCount);
+    if (log.model && log.errorCount > 0) {
+      errorsByModel.set(log.model, (errorsByModel.get(log.model) ?? 0) + log.errorCount);
+    }
     const dl = dayLabel(log.timestamp);
     const bucket = byDay.get(dl);
     if (bucket) {
@@ -242,17 +241,6 @@ export async function getAdminUsage() {
       bucket.errors += log.errorCount;
     }
 
-    requestsByApi.set(log.apiName, (requestsByApi.get(log.apiName) ?? 0) + log.requestCount);
-    // Average latency over successful calls only (errors carry latency 0).
-    if (log.errorCount === 0) {
-      const lat = latencyByApi.get(log.apiName) ?? { sum: 0, count: 0 };
-      lat.sum += log.latencyMs * log.requestCount;
-      lat.count += log.requestCount;
-      latencyByApi.set(log.apiName, lat);
-    }
-    if (log.errorCount > 0 && log.errorCode) {
-      errorsByType.set(log.errorCode, (errorsByType.get(log.errorCode) ?? 0) + log.errorCount);
-    }
     const catBucket = catByDay.get(dl);
     if (catBucket && cat in catBucket) catBucket[cat] += log.requestCount;
   }
@@ -279,26 +267,9 @@ export async function getAdminUsage() {
       .map((r) => ({ label: r.name, value: r.total }))
       .sort((a, b) => b.value - a.value),
     byCategory: CATEGORIES.map((c) => ({ name: c, value: byCategory[c] })).filter((d) => d.value > 0),
-    errorsByApi: Array.from(errorsByApi.entries())
+    errorsByModel: Array.from(errorsByModel.entries())
       .filter(([, v]) => v > 0)
       .map(([label, value]) => ({ label, value }))
-      .sort((a, b) => b.value - a.value),
-    // Avg end-to-end latency (ms) per API, successful calls only.
-    latencyByApi: Array.from(latencyByApi.entries())
-      .map(([label, { sum, count }]) => ({ label, value: count ? Math.round(sum / count) : 0 }))
-      .filter((d) => d.value > 0)
-      .sort((a, b) => b.value - a.value),
-    // Error rate (%) per API = errors / requests, one decimal.
-    errorRateByApi: Array.from(requestsByApi.entries())
-      .map(([label, reqs]) => ({
-        label,
-        value: reqs ? Math.round(((errorsByApi.get(label) ?? 0) / reqs) * 1000) / 10 : 0,
-      }))
-      .filter((d) => d.value > 0)
-      .sort((a, b) => b.value - a.value),
-    // Classified error codes (context_length_exceeded, gpu_full, ...).
-    errorsByType: Array.from(errorsByType.entries())
-      .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value),
     // Per-category requests per day (stacked area).
     categoryOverTime: Array.from(catByDay.entries()).map(([label, v]) => ({ label, ...v })),

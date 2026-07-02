@@ -67,7 +67,7 @@ export interface Trouble {
 export const TROUBLESHOOTING: Trouble[] = [
   { symptom: "401 invalid_api_key", cause: "Missing / wrong / disabled key, or key in the URL.", fix: "Reveal a fresh key (My Access), send it as Authorization: Bearer <key>. Never put it in the URL." },
   { symptom: "403 access_denied", cause: "Your account lacks access to that category.", fix: "Ask an admin to enable the category in Users & API Access." },
-  { symptom: "404 not_found", cause: "Wrong path, base_url missing /v1, or the API is Not Installed.", fix: "Ensure base_url ends with /v1; check GET /v1/models and the APIs page." },
+  { symptom: "404 not_found", cause: "Wrong path, base_url missing /v1, or the model is Not Installed.", fix: "Ensure base_url ends with /v1; check GET /v1/models and Model Runtime." },
   { symptom: "Hangs / parse error with the OpenAI SDK", cause: "You set stream=True; the gateway returns one JSON, not SSE.", fix: "Set stream=False (streaming is not supported yet)." },
   { symptom: "400 bad_request on chat with an image", cause: "messages[].content was an array (OpenAI vision format).", fix: "Use /v1/vision/chat with a multipart file. chat content must be a string." },
   { symptom: "400 on transcriptions", cause: "No audio file in the multipart body.", fix: "Send the audio as the multipart field 'file'." },

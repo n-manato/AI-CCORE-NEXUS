@@ -24,14 +24,14 @@ export async function POST(req: Request) {
       try {
         const buf = Buffer.from(await (file as File).arrayBuffer());
         const result = await sidecarStt(buf, model);
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0 });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model });
         return NextResponse.json(result, { headers: corsHeaders(req.headers.get("origin")) });
       } catch {
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model });
         return gatewayError("backend_error");
       }
     }
-    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model });
     return NextResponse.json(
       { text: "Mock transcription. Start the sidecar (faster-whisper) to enable real STT." },
       { headers: corsHeaders(req.headers.get("origin")) },

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, RefreshCw, KeyRound, Ban, Check, UserPlus, Save } from "lucide-react";
+import { Eye, RefreshCw, KeyRound, LockKeyhole, Ban, Check, UserPlus, Save } from "lucide-react";
 import { TableWrap, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export function UsersAccessTable({ users }: { users: UserRow[] }) {
   const [revealed, setRevealed] = useState<{ name: string; key: string } | null>(null);
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<UserRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function toggle(userId: string, cat: Category) {
@@ -84,8 +85,8 @@ export function UsersAccessTable({ users }: { users: UserRow[] }) {
     <>
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs text-muted">
-          Admin can view full keys per policy; every reveal, copy, regenerate, disable, and access
-          change is written to the audit log. Full keys are never logged.
+          Admin can manage every user&apos;s password and API access. Sensitive values are never
+          written to the audit log.
         </p>
         <Button size="sm" onClick={() => setAddOpen(true)}>
           <UserPlus className="h-4 w-4" />
@@ -175,6 +176,9 @@ export function UsersAccessTable({ users }: { users: UserRow[] }) {
               </TD>
               <TD>
                 <div className="flex flex-wrap justify-end gap-1.5">
+                  <Button variant="ghost" size="sm" onClick={() => setPasswordUser(u)}>
+                    <LockKeyhole className="h-3.5 w-3.5" /> Password
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => reveal(u)} disabled={!u.key}>
                     <Eye className="h-3.5 w-3.5" /> Reveal
                   </Button>
@@ -265,7 +269,102 @@ export function UsersAccessTable({ users }: { users: UserRow[] }) {
           router.refresh();
         }}
       />
+
+      <ChangePasswordModal
+        user={passwordUser}
+        onClose={() => setPasswordUser(null)}
+        onChanged={() => setPasswordUser(null)}
+      />
     </>
+  );
+}
+
+function ChangePasswordModal({
+  user,
+  onClose,
+  onChanged,
+}: {
+  user: UserRow | null;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function close() {
+    if (busy) return;
+    setPassword("");
+    setConfirm("");
+    setError(null);
+    onClose();
+  }
+
+  async function submit() {
+    if (!user) return;
+    if (password !== confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await postJson("/api/users/password", { userId: user.id, password });
+      setPassword("");
+      setConfirm("");
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={!!user} onClose={close} title={`Change password — ${user?.name ?? ""}`}>
+      <p className="mb-3 text-xs text-muted">
+        This replaces the user&apos;s login password immediately. The password is never displayed or logged.
+      </p>
+      <div className="space-y-3">
+        <div>
+          <Label htmlFor="admin-new-password">New password (8–128 characters)</Label>
+          <Input
+            id="admin-new-password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={busy}
+          />
+        </div>
+        <div>
+          <Label htmlFor="admin-confirm-password">Confirm new password</Label>
+          <Input
+            id="admin-confirm-password"
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && password.length >= 8 && password === confirm && submit()}
+            disabled={busy}
+          />
+        </div>
+        {error && <div className="text-sm text-danger">{error}</div>}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={close} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={busy || password.length < 8 || password.length > 128 || password !== confirm}
+        >
+          {busy ? "Changing..." : "Change password"}
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

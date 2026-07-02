@@ -23,14 +23,14 @@ export async function POST(req: Request) {
   try {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success || (!parsed.data.prompt && !parsed.data.emotion)) {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, path: PATH, code: "bad_request" });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "hy-motion-1", path: PATH, code: "bad_request" });
       return gatewayError("bad_request", { detail: "prompt or emotion is required" });
     }
 
     try {
       const health = await motionHealth();
       if (!health?.capabilities.motion) {
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, path: PATH, code: "unavailable" });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "hy-motion-1", path: PATH, code: "unavailable" });
         return gatewayError("unavailable", { detail: "motion service unreachable" });
       }
       const format = new URL(req.url).searchParams.get("format") === "smpl" ? "smpl" : "vmd";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       });
     } catch (e) {
       const key = isTimeoutError(e) ? "backend_timeout" : "backend_error";
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, path: PATH, code: key });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "hy-motion-1", path: PATH, code: key });
       return gatewayError(key);
     }
   } finally {

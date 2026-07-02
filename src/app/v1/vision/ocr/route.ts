@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const fd = await req.formData().catch(() => null);
     const file = fd?.get("file");
     if (!file || typeof file === "string") {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "paddleocr" });
       return gatewayError("bad_request");
     }
     const health = await sidecarHealth();
@@ -22,14 +22,14 @@ export async function POST(req: Request) {
       try {
         const buf = Buffer.from(await (file as File).arrayBuffer());
         const result = await sidecarOcr(buf);
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0 });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model: "paddleocr" });
         return NextResponse.json(result, { headers: corsHeaders(req.headers.get("origin")) });
       } catch {
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: "paddleocr" });
         return gatewayError("backend_error");
       }
     }
-    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: "paddleocr" });
     return NextResponse.json(
       { object: "mock", api: "OCR", message: "OCR backend not running yet." },
       { headers: corsHeaders(req.headers.get("origin")) },

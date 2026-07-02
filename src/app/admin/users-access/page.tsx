@@ -36,7 +36,7 @@ export default async function UsersAccessPage() {
     <>
       <PageHeader
         title="Users & API Access"
-        description="Manage users, roles, API keys, and per-category API access."
+        description="Manage users, roles, passwords, API keys, and per-category API access."
       />
       <UsersAccessTable users={rows} />
     </>

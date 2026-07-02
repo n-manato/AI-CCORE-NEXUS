@@ -12,7 +12,6 @@ export interface NavItem {
 export const ADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin/dashboard", icon: "gauge" },
   { label: "Users & API Access", href: "/admin/users-access", icon: "users" },
-  { label: "APIs", href: "/admin/apis", icon: "server" },
   { label: "Usage", href: "/admin/usage", icon: "bar-chart" },
   { label: "Model Runtime", href: "/admin/model-runtime", icon: "cpu" },
   { label: "Audit Logs", href: "/admin/audit-logs", icon: "scroll" },

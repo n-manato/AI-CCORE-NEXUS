@@ -86,6 +86,7 @@ model UsageLog {
   userId       String
   apiName      String
   category     String
+  model        String?  // requested model id when the endpoint selects a model
   requestCount Int      @default(0)
   errorCount   Int      @default(0)
   latencyMs    Int      @default(0) // measured end-to-end latency for the call

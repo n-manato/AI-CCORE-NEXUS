@@ -29,7 +29,7 @@ export default async function AdminUsagePage() {
 
   return (
     <>
-      <PageHeader title="Usage" description="Requests, errors, latency, and per-user activity over the last 14 days." />
+      <PageHeader title="Usage" description="Request volume, API mix, model errors, and per-user activity over the last 14 days." />
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Card className="lg:col-span-2">
@@ -65,27 +65,6 @@ export default async function AdminUsagePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Requests by user</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {u.byUser.length ? (
-              <BarChartView
-                data={u.byUser}
-                dataKey="value"
-                horizontal
-                showValues
-                labelWidth={160}
-                color={CHART.accent}
-                height={barHeight(u.byUser.length)}
-              />
-            ) : (
-              <Empty />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
             <CardTitle>API usage ratio</CardTitle>
           </CardHeader>
           <CardContent>
@@ -95,60 +74,18 @@ export default async function AdminUsagePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Avg latency by API (ms)</CardTitle>
+            <CardTitle>Errors by model</CardTitle>
           </CardHeader>
           <CardContent>
-            {u.latencyByApi.length ? (
+            {u.errorsByModel.length ? (
               <BarChartView
-                data={u.latencyByApi}
-                dataKey="value"
-                horizontal
-                showValues
-                labelWidth={160}
-                color={CHART.accent}
-                height={barHeight(u.latencyByApi.length)}
-              />
-            ) : (
-              <Empty />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Error rate by API (%)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {u.errorRateByApi.length ? (
-              <BarChartView
-                data={u.errorRateByApi}
-                dataKey="value"
-                horizontal
-                showValues
-                labelWidth={160}
-                color={CHART.warn}
-                height={barHeight(u.errorRateByApi.length)}
-              />
-            ) : (
-              <Empty label="No errors recorded." />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Errors by API</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {u.errorsByApi.length ? (
-              <BarChartView
-                data={u.errorsByApi}
+                data={u.errorsByModel}
                 dataKey="value"
                 horizontal
                 showValues
                 labelWidth={160}
                 color={CHART.danger}
-                height={barHeight(u.errorsByApi.length)}
+                height={barHeight(u.errorsByModel.length)}
               />
             ) : (
               <Empty label="No errors recorded." />
@@ -156,14 +93,6 @@ export default async function AdminUsagePage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Errors by type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {u.errorsByType.length ? <DonutChartView data={u.errorsByType} /> : <Empty label="No errors recorded." />}
-          </CardContent>
-        </Card>
       </div>
 
       <h2 className="mb-3 mt-6 text-sm font-medium text-ink-dim">Per-user usage</h2>

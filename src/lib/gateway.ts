@@ -295,6 +295,7 @@ export async function recordUsage(params: {
         userId: params.userId,
         apiName: params.apiName,
         category: params.category,
+        model: params.model ?? null,
         requestCount: 1,
         errorCount: params.isError ? 1 : 0,
         latencyMs,

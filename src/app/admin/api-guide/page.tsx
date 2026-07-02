@@ -11,7 +11,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getActiveKey } from "@/lib/keys";
 import { prisma } from "@/lib/db";
 import { computeDevicePlan } from "@/lib/runtime";
-import { ENDPOINTS, CORE_ENDPOINTS } from "@/lib/api-docs";
+import { ENDPOINTS, CORE_ENDPOINTS, type DocParam } from "@/lib/api-docs";
 import { MODEL_DOCS, modelCurl } from "@/lib/model-docs";
 import {
   CHAT_PARAMS,
@@ -26,6 +26,11 @@ import {
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "API Guide - Local AI Gateway" };
+
+function optionalDefault(param: DocParam): string {
+  const match = param.description.match(/default(?:s to)?\s+([^.)]+)/i);
+  return match?.[1]?.trim() ?? "not specified (server / backend decides)";
+}
 
 export default async function ApiGuidePage() {
   const admin = await requireAdmin();
@@ -45,6 +50,43 @@ export default async function ApiGuidePage() {
   const modelItems: ModelRefItem[] = allModels.map((m) => {
     const doc = MODEL_DOCS[m.modelId];
     const endpoint = doc?.endpoint;
+    const endpointDoc = endpoint ? ENDPOINTS.find((ep) => ep.path === endpoint) : undefined;
+    let inputs = (endpointDoc?.params ?? []).map((param) => ({
+      name: param.name,
+      type: param.type,
+      description:
+        param.name === "model"
+          ? `Send \"${m.modelId}\" to select this model. ${param.description}`
+          : param.description,
+      defaultValue: optionalDefault(param),
+      required: param.required || param.name === "model",
+    }));
+    const requestHasModel =
+      (endpointDoc?.request.kind === "json" && "model" in endpointDoc.request.body) ||
+      (endpointDoc?.request.kind === "multipart" && "model" in endpointDoc.request.fields);
+    if (requestHasModel && !inputs.some((input) => input.name === "model")) {
+      inputs.unshift({
+        name: "model",
+        type: "string",
+        description: `Send \"${m.modelId}\" to select this model.`,
+        defaultValue: "—",
+        required: true,
+      });
+    }
+    if (endpoint === "/v1/chat/completions") {
+      const endpointInputByName = new Map(inputs.map((input) => [input.name, input]));
+      inputs = CHAT_PARAMS.map((param) => {
+        const requiredInput = endpointInputByName.get(param.name);
+        if (requiredInput?.required) return requiredInput;
+        return {
+          name: param.name,
+          type: param.type,
+          description: `${param.effect} ${param.support}`,
+          defaultValue: param.def,
+          required: false,
+        };
+      });
+    }
     return {
       modelId: m.modelId,
       modelName: m.modelName,
@@ -59,6 +101,20 @@ export default async function ApiGuidePage() {
       whenToUse: doc?.whenToUse,
       endpoint,
       notes: doc?.notes,
+      requestFormat:
+        endpointDoc?.request.kind === "multipart"
+          ? "multipart/form-data"
+          : endpointDoc?.request.kind === "json"
+            ? "JSON body"
+            : "no request body",
+      requiredInputs: inputs.filter((input) => input.required),
+      optionalInputs: inputs.filter((input) => !input.required),
+      responseSummary: endpointDoc
+        ? endpointDoc.binaryResponse
+          ? "A binary file is returned in the HTTP response body. Check the endpoint's Content-Type header for the file type."
+          : "A JSON response is returned. Its shape is shown below."
+        : "See the endpoint response for this server-side model.",
+      responseExample: endpointDoc?.responseExample ?? "No response example is defined.",
       example: endpoint ? modelCurl(base, m.modelId, endpoint) : "",
     };
   });
@@ -192,10 +248,11 @@ export default async function ApiGuidePage() {
       </TableWrap>
 
       {/* 4. All models */}
-      <h2 className="mb-1 mt-6 text-sm font-medium text-ink-dim">4. Models — what each one does & how to call it</h2>
+      <h2 className="mb-1 mt-6 text-sm font-medium text-ink-dim">4. Models — inputs, optional settings & outputs</h2>
       <p className="mb-3 text-xs text-muted">
-        Every registered model ({modelItems.length}). Not-installed ones are marked and need an admin to install
-        them before use; the example shows the exact request for each.
+        For every registered model ({modelItems.length}), this shows what you must send, what you may send,
+        each optional setting&apos;s default, how to change it, and what the endpoint returns. Not-installed models
+        are marked and must be installed by an admin before use.
       </p>
       <ModelReference items={modelItems} />
 

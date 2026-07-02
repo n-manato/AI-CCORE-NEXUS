@@ -102,8 +102,8 @@ export function RuntimePanel({ initialRows }: { initialRows: RuntimeRow[] }) {
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="lg:col-span-2">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-w-0">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <VramWarningBannerInline forecast={forecast} />
           <div className="flex items-center gap-2">
@@ -134,7 +134,7 @@ export function RuntimePanel({ initialRows }: { initialRows: RuntimeRow[] }) {
         <ModelRuntimeTable rows={draft} onEdit={onEdit} />
       </div>
 
-      <div className="lg:col-span-1">
+      <div>
         <div className="sticky top-20 space-y-3">
           <VramForecastPanel forecast={forecast} />
         </div>

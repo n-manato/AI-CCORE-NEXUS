@@ -19,7 +19,19 @@ export interface ModelRefItem {
   whenToUse?: string;
   endpoint?: string;
   notes?: string;
+  requestFormat: string;
+  requiredInputs: ModelInput[];
+  optionalInputs: ModelInput[];
+  responseSummary: string;
+  responseExample: string;
   example: string;
+}
+
+export interface ModelInput {
+  name: string;
+  type: string;
+  description: string;
+  defaultValue?: string;
 }
 
 // Renders every model grouped by category, each with a description, when-to-use,
@@ -64,9 +76,25 @@ export function ModelReference({ items }: { items: ModelRefItem[] }) {
                   </p>
                   {m.notes && <p className="mt-1 text-xs text-warn">{m.notes}</p>}
 
+                  <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                    <InputList title="Required — you must always send these" items={m.requiredInputs} required />
+                    <InputList title="Optional / conditional inputs & settings" items={m.optionalInputs} />
+                  </div>
+
+                  <div className="mt-3 rounded-lg border border-border bg-bg-base/50 p-3">
+                    <div className="text-xs font-medium text-muted">What comes back</div>
+                    <p className="mt-1 text-xs text-ink-dim">{m.responseSummary}</p>
+                    <div className="mt-2">
+                      <CodeBlock title="response" code={m.responseExample} />
+                    </div>
+                  </div>
+
                   {m.example && (
                     <div className="mt-2">
-                      <CodeBlock title="example" code={m.example} />
+                      <div className="mb-1 text-xs text-muted">
+                        Complete request · {m.requestFormat}. Change an optional setting by adding its field to this request.
+                      </div>
+                      <CodeBlock title="request" code={m.example} />
                     </div>
                   )}
                 </Card>
@@ -75,6 +103,40 @@ export function ModelReference({ items }: { items: ModelRefItem[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function InputList({
+  title,
+  items,
+  required = false,
+}: {
+  title: string;
+  items: ModelInput[];
+  required?: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-bg-base/50 p-3">
+      <div className="mb-2 text-xs font-medium text-muted">{title}</div>
+      {items.length ? (
+        <div className="space-y-2">
+          {items.map((input) => (
+            <div key={input.name} className="text-xs">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <code className="font-mono text-ink">{input.name}</code>
+                <span className="text-muted">{input.type}</span>
+                {!required && (
+                  <span className="text-accent">Default: {input.defaultValue ?? "not specified"}</span>
+                )}
+              </div>
+              <p className="mt-0.5 text-ink-dim">{input.description}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted">None.</p>
+      )}
     </div>
   );
 }

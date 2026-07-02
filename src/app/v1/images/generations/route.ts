@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const job = await prisma.job.create({
     data: { userId: gate.auth.userId, apiName: gate.apiName, status: "Waiting", priority: 5, progress: 0 },
   });
-  await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false });
+  await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: parsed.data.model });
 
   return NextResponse.json(
     { job_id: job.id, status: job.status },
