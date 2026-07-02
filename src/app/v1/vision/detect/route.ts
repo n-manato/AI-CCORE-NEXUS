@@ -8,14 +8,14 @@ const PATH = "/v1/vision/detect";
 // POST /v1/vision/detect - object detection (sidecar YOLO). Image not stored.
 export async function POST(req: Request) {
   const t0 = Date.now();
-  const gate = await gateRequest(req, PATH);
+  const fd = await req.formData().catch(() => null);
+  const model = (fd?.get("model") as string) || "yolo11s";
+  const gate = await gateRequest(req, PATH, model);
   if (!gate.ok) return gate.response;
   try {
-    const fd = await req.formData().catch(() => null);
     const file = fd?.get("file");
-    const model = (fd?.get("model") as string) || undefined;
     if (!file || typeof file === "string") {
-      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: model ?? "yolo11s" });
+      await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model });
       return gatewayError("bad_request");
     }
     const health = await sidecarHealth();
@@ -23,14 +23,14 @@ export async function POST(req: Request) {
       try {
         const buf = Buffer.from(await (file as File).arrayBuffer());
         const result = await sidecarDetect(buf, model);
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model: model ?? "yolo11s" });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model });
         return NextResponse.json(result, { headers: corsHeaders(req.headers.get("origin")) });
       } catch {
-        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: model ?? "yolo11s" });
+        await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model });
         return gatewayError("backend_error");
       }
     }
-    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: model ?? "yolo11s" });
+    await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model });
     return NextResponse.json(
       { object: "mock", api: "Object Detection", message: "Detection backend not running yet." },
       { headers: corsHeaders(req.headers.get("origin")) },

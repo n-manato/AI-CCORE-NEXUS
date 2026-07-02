@@ -12,7 +12,6 @@ interface DefaultCfg {
   modelSizeClass: string;
   enabled: boolean;
   maxConcurrent: number;
-  autoShutdownMinutes: number;
 }
 
 // Admin: restore the recommended default runtime configuration (seed defaults).
@@ -35,12 +34,11 @@ export async function POST(req: Request) {
       prisma.modelRuntimeConfig.update({
         where: { modelId: d.modelId },
         data: {
-          startupPolicy: d.startupPolicy,
+          startupPolicy: d.startupPolicy === "Job Queue" ? "On Demand" : d.startupPolicy,
           runtimeType: d.runtimeType,
           modelSizeClass: d.modelSizeClass,
           enabled: d.enabled,
           maxConcurrent: d.maxConcurrent,
-          autoShutdownMinutes: d.autoShutdownMinutes,
         },
       }),
     ),

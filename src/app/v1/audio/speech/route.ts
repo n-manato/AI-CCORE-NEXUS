@@ -18,10 +18,10 @@ const PATH = "/v1/audio/speech";
 // POST /v1/audio/speech - text to speech (sidecar Kokoro when available, else mock WAV).
 export async function POST(req: Request) {
   const t0 = Date.now();
-  const gate = await gateRequest(req, PATH);
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  const gate = await gateRequest(req, PATH, parsed.success ? parsed.data.model : undefined);
   if (!gate.ok) return gate.response;
   try {
-    const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
       return gatewayError("bad_request");

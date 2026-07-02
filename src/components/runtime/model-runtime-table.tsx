@@ -70,7 +70,9 @@ export function ModelRuntimeTable({
           <TH>Runtime Type</TH>
           <TH>Size Class</TH>
           <TH className="text-center">Enabled</TH>
-          <TH className="text-right">Max Conc.</TH>
+          <TH className="text-right">
+            <span title="Maximum in-flight requests. Shared model weights are counted once; extra requests add workspace headroom.">Max Conc.</span>
+          </TH>
           <TH className="text-right">Est. VRAM</TH>
           <TH>State</TH>
           <TH className="text-right">Ops</TH>

@@ -100,8 +100,8 @@ export async function ollamaTags(): Promise<OllamaTag[] | null> {
 }
 
 // Tag names currently loaded into VRAM (ollama /api/ps).
-export async function ollamaRunning(): Promise<Set<string>> {
-  const d = (await getJson("/api/ps")) as { models?: { name: string }[] } | null;
+export async function ollamaRunning(ms = 4000): Promise<Set<string>> {
+  const d = (await getJson("/api/ps", ms)) as { models?: { name: string }[] } | null;
   return new Set((d?.models ?? []).map((m) => m.name));
 }
 
@@ -120,7 +120,7 @@ export async function ollamaChat(tag: string, body: Record<string, unknown>): Pr
   const r = await fetch(`${OLLAMA}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, model: tag, stream: false }),
+    body: JSON.stringify({ ...body, model: tag, stream: false, keep_alive: -1 }),
     signal: AbortSignal.timeout(600_000),
   });
   if (!r.ok) throw new OllamaError(r.status, await r.text().catch(() => ""));
@@ -134,7 +134,7 @@ export async function ollamaChatStream(tag: string, body: Record<string, unknown
   return fetch(`${OLLAMA}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, model: tag, stream: true }),
+    body: JSON.stringify({ ...body, model: tag, stream: true, keep_alive: -1 }),
     signal: AbortSignal.timeout(600_000),
   });
 }
@@ -163,6 +163,7 @@ export async function ollamaVision(tag: string, prompt: string, imageBase64: str
     body: JSON.stringify({
       model: tag,
       stream: false,
+      keep_alive: -1,
       messages: [{ role: "user", content: prompt, images: [imageBase64] }],
     }),
     signal: AbortSignal.timeout(180_000),

@@ -1,5 +1,6 @@
 import {
   GPU_VRAM_GB,
+  GPU_USABLE_VRAM_GB,
   TOTAL_VRAM_GB,
   VRAM_CAUTION,
   VRAM_WARNING,
@@ -14,6 +15,7 @@ export interface ForecastModel {
   modelId: string;
   modelName: string;
   category: string;
+  backend: string;
   enabled: boolean;
   startupPolicy: StartupPolicy;
   devicePlan: DevicePlan;
@@ -21,6 +23,7 @@ export interface ForecastModel {
   estVramMaxGb: number;
   maxConcurrent: number;
   multiGpuSupported: boolean;
+  separateProcessPerRequest: boolean;
 }
 
 export interface Contributor {
@@ -44,33 +47,48 @@ export interface ForecastResult {
   contributors: Contributor[];
 }
 
-// Worst-case resident footprint of a model.
-// A resident model occupies its VRAM once regardless of request concurrency;
-// Job-Queue models may run up to maxConcurrent heavy jobs in parallel.
-function footprint(m: ForecastModel): number {
+export function estimatedPeakVram(m: ForecastModel): number {
   const base = m.estVramMaxGb;
-  const instances = m.startupPolicy === "Job Queue" ? Math.max(1, m.maxConcurrent) : 1;
-  return base * instances;
+  const extraRequests = Math.max(0, m.maxConcurrent - 1);
+  if (m.separateProcessPerRequest) {
+    return base * Math.max(1, m.maxConcurrent);
+  }
+  // Conservative per-request allowance for KV cache and temporary workspaces.
+  const perRequestWorkspace = Math.max(0.5, base * 0.08);
+  return base + extraRequests * perRequestWorkspace;
 }
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-// Computes predicted per-GPU and total VRAM for the worst-case scenario where
-// every enabled, non-disabled model that could become resident is loaded.
+// Computes predicted per-GPU and total VRAM. Configuration planning includes
+// all pinned models plus the largest switchable On Demand model; the scheduler
+// can opt into including every model that is actually resident.
 //
 // IMPORTANT: the two RTX 3090s are treated as two independent 24GB devices, not
 // one 48GB pool. A single-GPU model never spans both cards; only an explicit
 // 2GPU model with multi-GPU backend support is split across both.
-export function forecastVram(models: ForecastModel[]): ForecastResult {
-  const active = models.filter(
+export function forecastVram(
+  models: ForecastModel[],
+  options: { includeAllOnDemand?: boolean } = {},
+): ForecastResult {
+  const eligible = models.filter(
     (m) =>
       m.enabled &&
       m.startupPolicy !== "Disabled" &&
       m.devicePlan !== "Disabled" &&
       m.devicePlan !== "Not Installed",
   );
+  const pinned = eligible.filter((m) => m.startupPolicy === "Always Running");
+  const onDemand = eligible.filter((m) => m.startupPolicy === "On Demand");
+  // Configuration planning reserves every pinned model plus the single largest
+  // On Demand model. On Demand residents are pressure-evicted, so summing every
+  // enabled model would incorrectly reject valid switchable configurations.
+  const dynamic = options.includeAllOnDemand
+    ? onDemand
+    : [...onDemand].sort((a, b) => estimatedPeakVram(b) - estimatedPeakVram(a)).slice(0, 1);
+  const active = [...pinned, ...dynamic];
 
   let gpu0 = 0;
   let gpu1 = 0;
@@ -85,7 +103,7 @@ export function forecastVram(models: ForecastModel[]): ForecastResult {
   const cpu = active.filter((m) => m.devicePlan === "CPU");
 
   for (const m of twoGpu) {
-    const fp = footprint(m);
+    const fp = estimatedPeakVram(m);
     if (!m.multiGpuSupported) {
       invalid = true;
       invalidReason = `${m.modelName} requires 2 GPUs but its backend does not support multi-GPU.`;
@@ -102,7 +120,7 @@ export function forecastVram(models: ForecastModel[]): ForecastResult {
   }
 
   for (const m of oneGpu) {
-    const fp = footprint(m);
+    const fp = estimatedPeakVram(m);
     if (gpu0 <= gpu1) {
       gpu0 += fp;
       contributors.push({ modelId: m.modelId, modelName: m.modelName, device: "GPU0", vramGb: round1(fp) });
@@ -126,7 +144,7 @@ export function forecastVram(models: ForecastModel[]): ForecastResult {
 
   // Decide status. Per-GPU limits dominate: if either card exceeds 24GB the
   // result is Over Limit even when the 48GB total looks fine.
-  const worstFrac = Math.max(gpu0, gpu1) / GPU_VRAM_GB;
+  const worstFrac = Math.max(gpu0, gpu1) / GPU_USABLE_VRAM_GB;
   let status: VramStatus;
   let canApply = true;
   let needsConfirm = false;
@@ -134,7 +152,7 @@ export function forecastVram(models: ForecastModel[]): ForecastResult {
   if (invalid) {
     status = "Invalid Combination";
     canApply = false;
-  } else if (gpu0 > GPU_VRAM_GB || gpu1 > GPU_VRAM_GB) {
+  } else if (gpu0 > GPU_USABLE_VRAM_GB || gpu1 > GPU_USABLE_VRAM_GB) {
     status = "Over Limit";
     canApply = false;
   } else if (worstFrac >= VRAM_CRITICAL) {
@@ -180,11 +198,13 @@ function buildReason(
     .slice(0, 3)
     .map((c) => `${c.modelName} (${c.vramGb}GB on ${c.device})`);
 
-  const heavyGpu = gpu0 >= gpu1 ? `GPU 0 at ${gpu0}/${GPU_VRAM_GB}GB` : `GPU 1 at ${gpu1}/${GPU_VRAM_GB}GB`;
+  const heavyGpu = gpu0 >= gpu1
+    ? `GPU 0 at ${gpu0}/${GPU_USABLE_VRAM_GB}GB usable`
+    : `GPU 1 at ${gpu1}/${GPU_USABLE_VRAM_GB}GB usable`;
 
   switch (status) {
     case "Over Limit":
-      return `${gpu0 > GPU_VRAM_GB ? "GPU 0" : "GPU 1"} is predicted to exceed ${GPU_VRAM_GB}GB. Top consumers: ${top.join(", ") || "none"}.`;
+      return `${gpu0 > GPU_USABLE_VRAM_GB ? "GPU 0" : "GPU 1"} is predicted to exceed the ${GPU_USABLE_VRAM_GB}GB safe limit (${GPU_VRAM_GB}GB physical). Top consumers: ${top.join(", ") || "none"}.`;
     case "Critical":
       return `${heavyGpu}. Top consumers: ${top.join(", ") || "none"}.`;
     case "Warning":

@@ -19,6 +19,7 @@ export interface RuntimeRow {
   estVramMinGb: number;
   estVramMaxGb: number;
   multiGpuSupported: boolean;
+  separateProcessPerRequest: boolean;
   devicePlan: DevicePlan; // read-only, system-calculated
   devicePlanReason: string;
   currentStatus: string;
@@ -28,7 +29,6 @@ export interface RuntimeRow {
   modelSizeClass: string;
   enabled: boolean;
   maxConcurrent: number;
-  autoShutdownMinutes: number;
 }
 
 // Device Plan is computed from the registry, never edited by the admin.
@@ -75,15 +75,17 @@ export async function getRuntimeRows(): Promise<RuntimeRow[]> {
       estVramMinGb: m.estimatedVramMinGb,
       estVramMaxGb: m.estimatedVramMaxGb,
       multiGpuSupported: m.multiGpuSupported,
+      separateProcessPerRequest: m.separateProcessPerRequest,
       devicePlan: dp.plan,
       devicePlanReason: dp.reason,
       currentStatus: m.runtimeState?.currentStatus ?? "Stopped",
-      startupPolicy: (m.runtimeConfig?.startupPolicy ?? "On Demand") as StartupPolicy,
+      startupPolicy: (m.runtimeConfig?.startupPolicy === "Job Queue"
+        ? "On Demand"
+        : m.runtimeConfig?.startupPolicy ?? "On Demand") as StartupPolicy,
       runtimeType: m.runtimeConfig?.runtimeType ?? "Sync",
       modelSizeClass: m.runtimeConfig?.modelSizeClass ?? "Medium",
       enabled: m.runtimeConfig?.enabled ?? false,
       maxConcurrent: m.runtimeConfig?.maxConcurrent ?? 1,
-      autoShutdownMinutes: m.runtimeConfig?.autoShutdownMinutes ?? 15,
     };
   });
 }
@@ -94,6 +96,7 @@ export function rowsToForecastModels(rows: RuntimeRow[]): ForecastModel[] {
     modelId: r.modelId,
     modelName: r.modelName,
     category: r.category,
+    backend: r.backend,
     enabled: r.enabled,
     startupPolicy: r.startupPolicy,
     devicePlan: r.devicePlan,
@@ -101,6 +104,7 @@ export function rowsToForecastModels(rows: RuntimeRow[]): ForecastModel[] {
     estVramMaxGb: r.estVramMaxGb,
     maxConcurrent: r.maxConcurrent,
     multiGpuSupported: r.multiGpuSupported,
+    separateProcessPerRequest: r.separateProcessPerRequest,
   }));
 }
 

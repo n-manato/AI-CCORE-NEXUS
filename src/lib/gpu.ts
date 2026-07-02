@@ -1,5 +1,4 @@
 import "server-only";
-import { execFileSync } from "child_process";
 import {
   GPU_BUSY_VRAM,
   GPU_FULL_VRAM,
@@ -8,6 +7,11 @@ import {
   GPU_VRAM_GB,
   type GpuStatusValue,
 } from "@/lib/constants";
+
+// This module is traced from Node instrumentation and route bundles. Keep the
+// Node built-in out of Edge analysis while resolving it normally at runtime.
+const nodeRequire = eval("require") as NodeRequire;
+const { execFileSync } = nodeRequire("child_process") as typeof import("child_process");
 
 export interface GpuInfo {
   index: number;

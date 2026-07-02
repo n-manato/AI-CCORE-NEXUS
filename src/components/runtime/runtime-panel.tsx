@@ -17,6 +17,7 @@ function toForecastModels(rows: RuntimeRow[]): ForecastModel[] {
     modelId: r.modelId,
     modelName: r.modelName,
     category: r.category,
+    backend: r.backend,
     enabled: r.enabled,
     startupPolicy: r.startupPolicy,
     devicePlan: r.devicePlan,
@@ -24,6 +25,7 @@ function toForecastModels(rows: RuntimeRow[]): ForecastModel[] {
     estVramMaxGb: r.estVramMaxGb,
     maxConcurrent: r.maxConcurrent,
     multiGpuSupported: r.multiGpuSupported,
+    separateProcessPerRequest: r.separateProcessPerRequest,
   }));
 }
 

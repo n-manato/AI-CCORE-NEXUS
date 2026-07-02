@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { syncBackends } from "@/lib/sync";
 import { OLLAMA_MAP, ollamaSetLoaded, ollamaRunning } from "@/lib/ollama";
 import { startMotionService, stopMotionService, isMotionProcessAlive } from "@/lib/motion-process";
+import { noteModelResidency, observeResidentModels } from "@/lib/vram-scheduler";
 
 // Server-side background loop. Started once from instrumentation.ts. Every tick it:
 //  1) syncs labels to the live backends (so API status / model Running stay fresh
@@ -30,7 +31,7 @@ async function tick(): Promise<void> {
   if (g.__lagTicking) return;
   g.__lagTicking = true;
   try {
-    await syncBackends().catch(() => {});
+    await syncBackends().then((result) => observeResidentModels(result.running)).catch(() => {});
     await reconcileModels().catch(() => {});
     await processJobs().catch(() => {});
     await retention().catch(() => {});
@@ -46,6 +47,12 @@ async function tick(): Promise<void> {
 // Exported so Apply can enact the config immediately (no need to wait a tick or
 // press a manual Load button). Sidecar models load lazily and are left alone.
 export async function reconcileModels(): Promise<void> {
+  // Migrate legacy configs in place. Job processing remains available as an API
+  // mode, but it is no longer a model residency policy.
+  await prisma.modelRuntimeConfig.updateMany({
+    where: { startupPolicy: "Job Queue" },
+    data: { startupPolicy: "On Demand", autoShutdownMinutes: 0 },
+  }).catch(() => {});
   const running = await ollamaRunning();
   const models = await prisma.modelRegistry.findMany({
     where: { installed: true },
@@ -56,9 +63,13 @@ export async function reconcileModels(): Promise<void> {
     if (!tag) continue;
     const cfg = m.runtimeConfig;
     if (cfg?.enabled && cfg.startupPolicy === "Always Running") {
-      await ollamaSetLoaded(tag, true, -1).catch(() => {}); // load + pin
-    } else if (!cfg?.enabled && running.has(tag)) {
-      await ollamaSetLoaded(tag, false).catch(() => {}); // unload (free VRAM)
+      await ollamaSetLoaded(tag, true, -1)
+        .then(() => noteModelResidency(m.modelId, true))
+        .catch(() => {}); // load + pin
+    } else if ((!cfg?.enabled || cfg.startupPolicy === "Disabled") && running.has(tag)) {
+      await ollamaSetLoaded(tag, false)
+        .then(() => noteModelResidency(m.modelId, false))
+        .catch(() => {}); // unload (free VRAM)
     }
   }
 
@@ -66,10 +77,14 @@ export async function reconcileModels(): Promise<void> {
   // the whole motion-service process - the analog of Ollama load/unload.
   const motion = models.find((m) => m.modelId === "hy-motion-1");
   if (motion?.runtimeConfig) {
-    const wantUp = motion.runtimeConfig.enabled;
+    const wantUp = motion.runtimeConfig.enabled && motion.runtimeConfig.startupPolicy === "Always Running";
     const isUp = isMotionProcessAlive();
-    if (wantUp && !isUp) await startMotionService();
-    else if (!wantUp && isUp) stopMotionService();
+    if (wantUp && !isUp) {
+      await startMotionService();
+    } else if ((!motion.runtimeConfig.enabled || motion.runtimeConfig.startupPolicy === "Disabled") && isUp) {
+      stopMotionService();
+      noteModelResidency(motion.modelId, false);
+    }
   }
 }
 

@@ -9,12 +9,12 @@ const PATH = "/v1/audio/transcriptions";
 // multipart/form-data with an audio `file` (+ optional `model`). Audio not stored.
 export async function POST(req: Request) {
   const t0 = Date.now();
-  const gate = await gateRequest(req, PATH);
+  const fd = await req.formData().catch(() => null);
+  const model = (fd?.get("model") as string) || "faster-whisper-medium";
+  const gate = await gateRequest(req, PATH, model);
   if (!gate.ok) return gate.response;
   try {
-    const fd = await req.formData().catch(() => null);
     const file = fd?.get("file");
-    const model = (fd?.get("model") as string) || undefined;
     if (!file || typeof file === "string") {
       await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true });
       return gatewayError("bad_request");

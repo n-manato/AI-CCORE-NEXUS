@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin } from "@/lib/api-auth";
 import { syncBackends } from "@/lib/sync";
+import { observeResidentModels } from "@/lib/vram-scheduler";
 import { writeAudit, clientIp } from "@/lib/audit";
 
 // Admin: sync every label (API status, model installed/running, queue/error
@@ -10,6 +11,7 @@ export async function POST(req: Request) {
   if (!guard.ok) return guard.response;
 
   const result = await syncBackends();
+  observeResidentModels(result.running);
 
   await writeAudit({
     adminId: guard.user.id,

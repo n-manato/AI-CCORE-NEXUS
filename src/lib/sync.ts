@@ -77,7 +77,6 @@ export async function syncBackends(): Promise<SyncResult> {
           currentStatus: isInstalled ? (isRunning ? "Running" : "Stopped") : "Stopped",
           // Ollama packs a model onto a single GPU when it fits (these 4-bit models do).
           actualDevice: isRunning ? "GPU" : null,
-          lastUsedAt: isRunning ? new Date() : undefined,
         },
       })
       .catch(() => {});
@@ -139,8 +138,10 @@ export async function syncBackends(): Promise<SyncResult> {
 
   // --- API status from real availability ---
   // Model "Enabled" flags (Model Runtime); default true when no config row.
-  const cfgs = await prisma.modelRuntimeConfig.findMany({ select: { modelId: true, enabled: true } });
-  const enabledOf = new Map(cfgs.map((c) => [c.modelId, c.enabled]));
+  const cfgs = await prisma.modelRuntimeConfig.findMany({
+    select: { modelId: true, enabled: true, startupPolicy: true },
+  });
+  const enabledOf = new Map(cfgs.map((c) => [c.modelId, c.enabled && c.startupPolicy !== "Disabled"]));
   const isEnabled = (id: string) => enabledOf.get(id) !== false;
 
   // LLM Chat / Vision QA serve MANY models, so the API is Online when ANY

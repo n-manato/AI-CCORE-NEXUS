@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { hashKey } from "@/lib/crypto";
 import { logServerEvent } from "@/lib/server-log";
+import { acquireVramLease } from "@/lib/vram-scheduler";
 import {
   ENDPOINT_CATEGORY,
   SETTING_KEYS,
@@ -147,8 +148,8 @@ function clientIp(headers: Headers): string {
 }
 
 // ---- In-process concurrency limiter (enforces Max Concurrent per model) ----
-// In-memory => per server instance. A safety timer auto-releases a slot after
-// 3 minutes so a route that forgets to release can never wedge an API.
+// In-memory => per server instance. A long safety timer auto-releases a slot if
+// a route crashes before cleanup; normal and streaming routes release explicitly.
 
 const slots = new Map<string, number>();
 
@@ -163,7 +164,7 @@ function acquireSlot(modelId: string, limit: number): (() => void) | null {
     clearTimeout(timer);
     slots.set(modelId, Math.max(0, (slots.get(modelId) ?? 1) - 1));
   };
-  const timer = setTimeout(release, 180_000);
+  const timer = setTimeout(release, 15 * 60_000);
   return release;
 }
 
@@ -371,7 +372,15 @@ export async function gateRequest(
     if (!rel) {
       return { ok: false, response: gatewayError("rate_limited", { detail: "max concurrency reached" }) };
     }
-    release = rel;
+    const lease = await acquireVramLease(modelId);
+    if (!lease.ok) {
+      rel();
+      return { ok: false, response: gatewayError("gpu_full", { detail: lease.reason }) };
+    }
+    release = () => {
+      lease.release();
+      rel();
+    };
   }
 
   return { ok: true, auth, apiName: mapping.apiName, category: mapping.category, release };

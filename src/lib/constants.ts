@@ -71,7 +71,6 @@ export type JobStatus = (typeof JOB_STATUS)[number];
 export const STARTUP_POLICIES = [
   "Always Running",
   "On Demand",
-  "Job Queue",
   "Disabled",
 ] as const;
 export type StartupPolicy = (typeof STARTUP_POLICIES)[number];
@@ -111,6 +110,8 @@ export type ModelRuntimeStateValue = (typeof MODEL_RUNTIME_STATE)[number];
 // Hardware facts for the shared server: two independent 24GB GPUs.
 export const GPU_COUNT = 2;
 export const GPU_VRAM_GB = 24;
+export const GPU_VRAM_RESERVE_GB = 2;
+export const GPU_USABLE_VRAM_GB = GPU_VRAM_GB - GPU_VRAM_RESERVE_GB;
 export const TOTAL_VRAM_GB = GPU_COUNT * GPU_VRAM_GB; // 48
 
 // GPU status thresholds (fraction of a single 24GB GPU).

@@ -8,6 +8,7 @@ import { SIDECAR_MODELS, sidecarUnload } from "@/lib/sidecar";
 import { MOTION_MODELS } from "@/lib/motion";
 import { startMotionService, stopMotionService } from "@/lib/motion-process";
 import type { AdminAction } from "@/lib/constants";
+import { noteModelResidency } from "@/lib/vram-scheduler";
 
 const Body = z.object({
   modelId: z.string().min(1),
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
   }
 
   const running = action === "reload";
+  noteModelResidency(modelId, running);
   await prisma.modelRuntimeState.update({
     where: { modelId },
     data: {

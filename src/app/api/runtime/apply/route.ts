@@ -6,6 +6,7 @@ import { getRuntimeRows, rowsToForecastModels, type RuntimeRow } from "@/lib/run
 import { forecastVram } from "@/lib/vram";
 import { syncBackends } from "@/lib/sync";
 import { reconcileModels } from "@/lib/worker";
+import { observeResidentModels } from "@/lib/vram-scheduler";
 import { writeAudit, clientIp } from "@/lib/audit";
 import { STARTUP_POLICIES, MODEL_SIZE_CLASSES, MODES } from "@/lib/constants";
 
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
   // Reflect the new config (Enabled -> API status) immediately, then enact it:
   // load Always-Running models / unload disabled ones now (in the background, so
   // Apply returns fast). No manual Load button needed.
-  await syncBackends().catch(() => {});
+  await syncBackends().then((result) => observeResidentModels(result.running)).catch(() => {});
   void reconcileModels().catch(() => {});
 
   await prisma.vramForecastSnapshot.create({

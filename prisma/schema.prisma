@@ -150,6 +150,7 @@ model ModelRegistry {
   estimatedVramMaxGb  Float   @default(0)
   defaultDeviceRule   String  @default("1GPU") // CPU | 1GPU | 2GPU | Disabled | Not Installed
   multiGpuSupported   Boolean @default(false)
+  separateProcessPerRequest Boolean @default(false) // true only when concurrency duplicates model weights
 
   runtimeConfig ModelRuntimeConfig?
   runtimeState  ModelRuntimeState?
@@ -157,12 +158,12 @@ model ModelRegistry {
 
 model ModelRuntimeConfig {
   modelId            String  @id
-  startupPolicy      String  @default("On Demand") // Always Running | On Demand | Job Queue | Disabled
+  startupPolicy      String  @default("On Demand") // Always Running | On Demand | Disabled
   runtimeType        String  @default("Sync") // Real-time | Sync | Job
   modelSizeClass     String  @default("Medium") // Small | Medium | Large | XLarge
   enabled            Boolean @default(true)
   maxConcurrent      Int     @default(1)
-  autoShutdownMinutes Int    @default(15)
+  autoShutdownMinutes Int    @default(0) // deprecated: On Demand models remain resident until VRAM pressure
 
   model ModelRegistry @relation(fields: [modelId], references: [modelId], onDelete: Cascade)
 }
