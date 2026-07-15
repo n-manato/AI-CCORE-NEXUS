@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ollamaTags, ollamaRunning, OLLAMA_MAP, LLM_APP_IDS, VISION_APP_IDS } from "@/lib/ollama";
 import { sidecarHealth, SIDECAR_MODELS } from "@/lib/sidecar";
 import { motionHealth, MOTION_MODELS } from "@/lib/motion";
+import { gestureHealth, GESTURE_MODELS } from "@/lib/gesture";
 import { API_MODEL } from "@/lib/constants";
 
 export interface SyncResult {
@@ -27,6 +28,11 @@ const MOTION_API: Record<string, string> = {
   "Motion Generation": "motion",
 };
 
+// api_status.apiName -> gesture-service capability key
+const GESTURE_API: Record<string, string> = {
+  "Gesture Generation": "gesture",
+};
+
 // Syncs every label in the app to the REAL state of the backends:
 //  - Ollama for LLM Chat / Vision QA (+ their models)
 //  - Python sidecar for OCR / detection / STT / TTS / background removal
@@ -49,6 +55,10 @@ export async function syncBackends(): Promise<SyncResult> {
   const mhealth = await motionHealth();
   const motionCaps = mhealth?.capabilities ?? {};
   const motionLoaded = mhealth?.loaded ?? {};
+
+  const ghealth = await gestureHealth();
+  const gestureCaps = ghealth?.capabilities ?? {};
+  const gestureLoaded = ghealth?.loaded ?? {};
 
   const installed: string[] = [];
   const running: string[] = [];
@@ -119,8 +129,17 @@ export async function syncBackends(): Promise<SyncResult> {
       .catch(() => {});
   }
 
+  for (const appId of Object.keys(GESTURE_MODELS)) {
+    const isRunning = !!gestureLoaded["gesturelsm"];
+    installed.push(appId);
+    if (isRunning) running.push(appId);
+    await prisma.modelRuntimeState
+      .update({ where: { modelId: appId }, data: { currentStatus: isRunning ? "Running" : "Stopped", actualDevice: isRunning ? "GPU0" : null } })
+      .catch(() => {});
+  }
+
   // --- Models with no backend at all -> not installed, stopped (honest) ---
-  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS)];
+  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS), ...Object.keys(GESTURE_MODELS)];
   await prisma.modelRuntimeState
     .updateMany({ where: { modelId: { notIn: managed }, currentStatus: { not: "Error" } }, data: { currentStatus: "Stopped", currentVramMb: 0, actualDevice: null } })
     .catch(() => {});
@@ -176,6 +195,10 @@ export async function syncBackends(): Promise<SyncResult> {
       // "Not Installed" — that would drop it from /v1/models and the UI actions).
       status = motionCaps[cap] ? "Online" : "Offline";
       if (motionCaps[cap]) backend = "HY-Motion";
+    } else if (api.apiName in GESTURE_API) {
+      const cap = GESTURE_API[api.apiName];
+      status = gestureCaps[cap] ? "Online" : "Offline";
+      if (gestureCaps[cap]) backend = "GestureLSM";
     } else {
       status = "Not Installed"; // no backend wired yet
     }

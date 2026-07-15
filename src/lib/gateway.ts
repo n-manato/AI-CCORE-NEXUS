@@ -189,6 +189,7 @@ export const ENDPOINT_API: Record<string, { apiName: string; category: Category 
   "/v1/video/understanding/jobs": { apiName: "Video Understanding", category: "Video" },
   "/v1/video/lip-sync/jobs": { apiName: "Lip Sync", category: "Video" },
   "/v1/motion/generate": { apiName: "Motion Generation", category: "Motion" },
+  "/v1/gesture": { apiName: "Gesture Generation", category: "Motion" },
   "/v1/robot-motion/commands": { apiName: "Robot Motion", category: "Motion" },
 };
 

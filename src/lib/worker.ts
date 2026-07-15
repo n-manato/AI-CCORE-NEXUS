@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { syncBackends } from "@/lib/sync";
 import { OLLAMA_MAP, ollamaSetLoaded, ollamaRunning } from "@/lib/ollama";
 import { startMotionService, stopMotionService, isMotionProcessAlive } from "@/lib/motion-process";
+import { startGestureService, stopGestureService, isGestureProcessAlive } from "@/lib/gesture-process";
 import { noteModelResidency, observeResidentModels } from "@/lib/vram-scheduler";
 
 // Server-side background loop. Started once from instrumentation.ts. Every tick it:
@@ -84,6 +85,19 @@ export async function reconcileModels(): Promise<void> {
     } else if ((!motion.runtimeConfig.enabled || motion.runtimeConfig.startupPolicy === "Disabled") && isUp) {
       stopMotionService();
       noteModelResidency(motion.modelId, false);
+    }
+  }
+
+  // GestureLSM: same as HY-Motion — a separate process the enable toggle starts/stops.
+  const gesture = models.find((m) => m.modelId === "gesturelsm-1");
+  if (gesture?.runtimeConfig) {
+    const wantUp = gesture.runtimeConfig.enabled && gesture.runtimeConfig.startupPolicy === "Always Running";
+    const isUp = isGestureProcessAlive();
+    if (wantUp && !isUp) {
+      await startGestureService();
+    } else if ((!gesture.runtimeConfig.enabled || gesture.runtimeConfig.startupPolicy === "Disabled") && isUp) {
+      stopGestureService();
+      noteModelResidency(gesture.modelId, false);
     }
   }
 }

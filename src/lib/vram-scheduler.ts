@@ -7,6 +7,8 @@ import { getGpuReport } from "@/lib/gpu";
 import { OLLAMA_MAP, ollamaRunning, ollamaSetLoaded } from "@/lib/ollama";
 import { SIDECAR_MODELS, sidecarHealth, sidecarUnload } from "@/lib/sidecar";
 import { MOTION_MODELS, motionHealth } from "@/lib/motion";
+import { GESTURE_MODELS, gestureHealth } from "@/lib/gesture";
+import { isGestureProcessAlive, startGestureService, stopGestureService } from "@/lib/gesture-process";
 import { isMotionProcessAlive, startMotionService, stopMotionService } from "@/lib/motion-process";
 import { GPU_USABLE_VRAM_GB, GPU_VRAM_RESERVE_GB } from "@/lib/constants";
 
@@ -76,6 +78,7 @@ async function actualResidentModelIds(): Promise<Set<string>> {
     for (const [id, tag] of Object.entries(OLLAMA_MAP)) if (ollama.has(tag)) state.resident.add(id);
     for (const [id, cap] of Object.entries(SIDECAR_MODELS)) if (sidecar?.loaded[cap]) state.resident.add(id);
     if (isMotionProcessAlive()) for (const id of Object.keys(MOTION_MODELS)) state.resident.add(id);
+    if (isGestureProcessAlive()) for (const id of Object.keys(GESTURE_MODELS)) state.resident.add(id);
     state.initialized = true;
   }
   const ids = new Set<string>([...state.resident, ...state.active.keys()]);
@@ -140,6 +143,7 @@ async function unloadModel(m: RegistryRow): Promise<void> {
   if (tag) await ollamaSetLoaded(tag, false);
   else if (cap) await sidecarUnload(cap);
   else if (m.modelId in MOTION_MODELS) stopMotionService();
+  else if (m.modelId in GESTURE_MODELS) stopGestureService();
   else throw new Error(`No unload adapter for ${m.modelId}`);
 
   await prisma.modelRuntimeState.update({
@@ -163,6 +167,14 @@ async function loadModel(m: RegistryRow): Promise<void> {
     const deadline = Date.now() + 60_000;
     while (!(await motionHealth(1500))) {
       if (Date.now() >= deadline) throw new Error("motion service did not become ready within 60s");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  else if (m.modelId in GESTURE_MODELS) {
+    await startGestureService();
+    const gdeadline = Date.now() + 60_000;
+    while (!(await gestureHealth(1500))) {
+      if (Date.now() >= gdeadline) throw new Error("gesture service did not become ready within 60s");
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
