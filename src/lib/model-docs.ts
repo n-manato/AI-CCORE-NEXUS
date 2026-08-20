@@ -91,6 +91,12 @@ export const MODEL_DOCS: Record<string, ModelDoc> = {
   },
 
   // ---- Vision ----
+  "qwen3.6-27b": {
+    summary: "Vision-language Qwen3.6 model for image questions and visual reasoning.",
+    whenToUse: "Image Q&A, screenshots, charts, and visual coding context when the Qwen3.6 model is already resident.",
+    endpoint: "/v1/responses",
+    notes: "Ollama Q8_0, 2GPU. Responses API accepts input_image and normalizes it to the Ollama-compatible image format.",
+  },
   "qwen2.5-vl-7b": {
     summary: "Vision-language model: answer questions about an image.",
     whenToUse: "Image Q&A, captioning, reading charts/screenshots.",
@@ -198,6 +204,14 @@ export const MODEL_DOCS: Record<string, ModelDoc> = {
     whenToUse: "Send discrete robot commands (move, turn, etc.).",
     endpoint: "/v1/robot-motion/commands",
     notes: "CPU, real-time. Command-based (no model field needed).",
+  },
+
+  // ---- 3D ----
+  "trellis-2": {
+    summary: "TRELLIS.2-4B image-to-3D: a single image → PBR-textured 3D asset (GLB).",
+    whenToUse: "Turn one product/reference image into a downloadable 3D model.",
+    endpoint: "/v1/3d/generations",
+    notes: "1GPU, On Demand (offload), Sync. On a 24GB card: 512 (~36s) and 1024 (~118s, peak ~16.6GB) both work; 1536 exceeds 24GB (OOMs in remeshing) and needs a >24GB GPU. Returns a .glb.",
   },
 };
 

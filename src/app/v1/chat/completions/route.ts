@@ -34,6 +34,19 @@ const Body = z
 
 const PATH = "/v1/chat/completions";
 
+// vLLM (externally-managed, OpenAI-compatible) models are routed straight to the
+// local vLLM server instead of Ollama. The gateway does NOT manage vLLM's VRAM /
+// loading (it's run out-of-band), so these skip the model VRAM lease; auth +
+// category access + concurrency accounting still apply. Comma-separated ids in
+// VLLM_MODELS; VLLM_URL points at the vLLM OpenAI endpoint (default localhost).
+const VLLM_MODELS = new Set(
+  (process.env.VLLM_MODELS ?? "qwen3-30b-a3b")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+const VLLM_URL = process.env.VLLM_URL ?? "http://127.0.0.1:8807/v1/chat/completions";
+
 // Some chat templates (Mistral / Devstral) STRICTLY require user/assistant roles
 // to alternate and raise a Jinja exception otherwise. Agents like Cline often
 // send consecutive same-role messages (e.g. two user turns) → Ollama returns 500
@@ -80,8 +93,9 @@ export async function POST(req: Request) {
   const t0 = Date.now();
   const parsed = Body.safeParse(await req.json().catch(() => null));
   const requestedModel = parsed.success ? toAppId(parsed.data.model) : undefined;
+  const isVllm = parsed.success && VLLM_MODELS.has(parsed.data.model);
 
-  const gate = await gateRequest(req, PATH, requestedModel);
+  const gate = await gateRequest(req, PATH, requestedModel, { skipModelLease: isVllm });
   if (!gate.ok) return gate.response;
   const usage = { userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, path: PATH };
 
@@ -92,6 +106,73 @@ export async function POST(req: Request) {
   }
   const body = parsed.data as Record<string, unknown> & { model: string; stream?: boolean };
   body.messages = normalizeMessages(body.messages);
+
+  // vLLM passthrough (OpenAI-compatible): pipe the request to the local vLLM server
+  // and stream/return its response verbatim. No Ollama tag mapping or compaction —
+  // vLLM manages its own context. release() fires on stream end / abort / cancel.
+  if (isVllm) {
+    let upstream: Response;
+    try {
+      upstream = await fetch(VLLM_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: req.signal,
+      });
+    } catch (e) {
+      gate.release();
+      const key = isTimeoutError(e) ? "backend_timeout" : "backend_error";
+      const message = (e as Error)?.message;
+      await recordUsage({ ...usage, isError: true, model: body.model, code: key, status: errorStatus(key), message, stream: !!body.stream });
+      logGatewayError({ path: PATH, apiName: gate.apiName, model: body.model, code: key, status: errorStatus(key), message, stream: !!body.stream });
+      return gatewayError(key, message ? { detail: message } : undefined);
+    }
+    if (!upstream.ok || !upstream.body) {
+      gate.release();
+      const errBody = await upstream.text().catch(() => "");
+      const message = extractUpstreamMessage(errBody) ?? errBody.slice(0, 200);
+      await recordUsage({ ...usage, isError: true, model: body.model, code: "backend_error", status: errorStatus("backend_error"), message, stream: !!body.stream });
+      logGatewayError({ path: PATH, apiName: gate.apiName, model: body.model, code: "backend_error", status: errorStatus("backend_error"), upstreamStatus: upstream.status, message, stream: !!body.stream });
+      return gatewayError("backend_error", message ? { detail: message } : undefined);
+    }
+    const release = gate.release;
+    const reader = upstream.body.getReader();
+    const passthrough = new ReadableStream({
+      async start(controller) {
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
+          }
+        } catch {
+          /* upstream error/abort */
+        } finally {
+          release();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+        }
+      },
+      cancel(reason) {
+        release();
+        void reader.cancel(reason).catch(() => {});
+      },
+    });
+    req.signal?.addEventListener("abort", release, { once: true });
+    void recordUsage({ ...usage, isError: false, latencyMs: Date.now() - t0, model: body.model, status: 200, stream: !!body.stream });
+    return new Response(passthrough, {
+      status: 200,
+      headers: {
+        "Content-Type": upstream.headers.get("content-type") ?? (body.stream ? "text/event-stream; charset=utf-8" : "application/json"),
+        "Cache-Control": "no-cache, no-transform",
+        ...corsHeaders(req.headers.get("origin")),
+      },
+    });
+  }
+
   const tag = appIdToTag(body.model) ?? body.model;
 
   // Opt-in transparent compaction: when enabled (header `x-nexus-compact: on` or

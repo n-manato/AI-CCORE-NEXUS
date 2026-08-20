@@ -38,7 +38,9 @@ export const OLLAMA_MAP: Record<string, string> = {
   "qwen2.5-vl-32b": "qwen2.5vl:32b",
 };
 
-export const VISION_APP_IDS = ["qwen2.5-vl-7b", "qwen2.5-vl-32b"];
+// Qwen3.6-27B has a vision projector in the installed Ollama tag and can back
+// both the general LLM and the dedicated Vision QA gate.
+export const VISION_APP_IDS = ["qwen3.6-27b", "qwen2.5-vl-7b", "qwen2.5-vl-32b"];
 export const LLM_APP_IDS = [
   "qwen3-8b",
   "qwen3-14b",

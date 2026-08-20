@@ -71,8 +71,10 @@ console.log(r.choices[0].message.content);
 
 - **Do not set `stream: true`** — the gateway returns a single JSON object, not an SSE
   stream, so SDK streaming parsers will fail. Leave streaming off.
-- **Chat `content` must be a string.** For images, call `/v1/vision/*` with a file
-  upload, not chat with an array `content` (that returns `400`).
+- **Chat image input.** `/v1/chat/completions` preserves OpenAI image content arrays;
+  `/v1/responses` accepts `input_image` with a Base64 Data URL or a public HTTP(S)
+  image URL. Remote images are fetched by the gateway, validated, and sent to the
+  configured vision-capable Ollama model.
 
 Unknown OpenAI params (`temperature`, `top_p`, `presence_penalty`, `frequency_penalty`,
 `seed`, `n`, `stop`) are accepted and never error; they apply once a real backend is
@@ -83,7 +85,7 @@ connected (the mock ignores them).
 | gpt-4o-mini / gpt-3.5-turbo | `qwen3-8b` | /v1/chat/completions |
 | gpt-4o / gpt-4.1 | `qwen3-14b` / `qwen3-32b-4bit` | /v1/chat/completions |
 | gpt-4o (coding) | `qwen2.5-coder-14b` | /v1/chat/completions |
-| gpt-4o vision | `qwen2.5-vl-7b` | /v1/vision/chat (file upload) |
+| gpt-4o vision | `qwen3.6-27b` | /v1/responses (`input_image`) or /v1/vision/chat (file upload) |
 | tts-1 / tts-1-hd | `kokoro-82m` / `gpt-sovits` | /v1/audio/speech |
 | whisper-1 | `faster-whisper-medium` / `large-v3` | /v1/audio/transcriptions |
 | dall-e-3 / gpt-image-1 | `flux-schnell` / `flux-dev` | /v1/images/generations (Job) |
@@ -154,6 +156,7 @@ already running may be slower on the first call (cold start).
 | STT | `deepfilternet` | Speech enhancement | DeepFilterNet | yes | CPU Fixed | 0–1 GB |
 | Vision | `qwen2.5-vl-7b` | Vision QA fast | vLLM | yes | 1GPU Fixed | 14–16 GB |
 | Vision | `qwen2.5-vl-32b` | Vision QA quality | vLLM | no | 2GPU Fixed | 28–34 GB |
+| LLM/Vision | `qwen3.6-27b` | Reasoning + vision | Ollama | yes | 2GPU | 29.5–31 GB |
 | Vision | `paddleocr` | OCR fast | PaddleOCR | yes | CPU Fixed | 0–2 GB |
 | Vision | `yolo11s` | Object detection | Ultralytics | yes | 1GPU Fixed | 1–2 GB |
 | Vision | `sam2` | Segmentation | SAM2 | no | 1GPU Fixed | 6–8 GB |
@@ -184,6 +187,7 @@ already running may be slower on the first call (cold start).
 | GET | `/v1/jobs/{job_id}` | Core | — | — |
 | POST | `/v1/jobs/{job_id}/cancel` | Core | — | — |
 | POST | `/v1/chat/completions` | LLM | Real-time | Online |
+| POST | `/v1/responses` | LLM/Vision | Real-time | Online |
 | POST | `/v1/rag/query` | LLM | Sync | Online |
 | POST | `/v1/audio/speech` | TTS | Sync | Online |
 | POST | `/v1/audio/transcriptions` | STT | Real-time | Online |
@@ -202,11 +206,12 @@ already running may be slower on the first call (cold start).
 | POST | `/v1/video/lip-sync/jobs` | Video | Job | Not Installed |
 | POST | `/v1/motion/generate` | Motion | Sync | Disabled |
 | POST | `/v1/robot-motion/commands` | Motion | Real-time | Error |
+| POST | `/v1/3d/generations` | 3D | Sync | On Demand |
 
 Endpoints with a dedicated handler: `models`, `chat/completions`, `rag/query`,
-`audio/speech`, `audio/transcriptions`, `images/generations`, `jobs/{id}`,
-`jobs/{id}/cancel`. The rest are mock skeletons that run the same gate and return a
-mock body (or create a Job for Job-mode APIs).
+`audio/speech`, `audio/transcriptions`, `images/generations`, `3d/generations`,
+`jobs/{id}`, `jobs/{id}/cancel`. The rest are mock skeletons that run the same gate
+and return a mock body (or create a Job for Job-mode APIs).
 
 ## 7. Examples
 
@@ -298,6 +303,43 @@ curl -X POST http://localhost:3000/v1/jobs/JOB_ID/cancel -H "Authorization: Bear
 
 > `Image Generation` is `Not Installed` in seed data, so it returns `404` until an admin
 > installs/enables it. Once Online, the create call returns `202 { "job_id", "status" }`.
+
+### Image to 3D (TRELLIS.2) — multipart upload, binary GLB response
+
+Turn a **single** image into a PBR-textured 3D asset. The response body **is** the
+binary `.glb` (`Content-Type: model/gltf-binary`) — write it straight to a file with
+`-o`. This is `Sync`, so the request blocks for ~seconds-to-a-minute until the model
+is done (no job polling).
+
+```bash
+curl -X POST https://gpu.aiccore-uno.ai/v1/3d/generations \
+  -H "Authorization: Bearer $LAG_API_KEY" \
+  -F image=@photo.png \
+  -F resolution=512 \
+  -o model.glb
+```
+
+```python
+import os, requests
+
+API_KEY = os.environ["LAG_API_KEY"]
+resp = requests.post(
+    "https://gpu.aiccore-uno.ai/v1/3d/generations",
+    headers={"Authorization": f"Bearer {API_KEY}"},
+    data={"resolution": "512"},
+    files={"image": open("photo.png", "rb")},
+)
+with open("model.glb", "wb") as f:
+    f.write(resp.content)
+```
+
+Fields: `image` (required, png/jpg), `resolution` (`512` | `1024` | `1536`, default
+`512`), `seed` (int, default `42`), `texture_size` (int, default `2048`).
+
+> **One input image only** — TRELLIS.2 does not fuse multiple views. On a 24 GB GPU,
+> `512` (~36s) and `1024` (~118s in offload mode) both work; `1536` exceeds 24 GB and
+> OOMs during remeshing (needs a >24 GB card). Backend runs at `maxConcurrent 1`, so
+> overlapping callers queue or receive `429`.
 
 ## 8. Errors
 

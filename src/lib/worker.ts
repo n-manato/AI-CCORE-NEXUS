@@ -4,6 +4,9 @@ import { syncBackends } from "@/lib/sync";
 import { OLLAMA_MAP, ollamaSetLoaded, ollamaRunning } from "@/lib/ollama";
 import { startMotionService, stopMotionService, isMotionProcessAlive } from "@/lib/motion-process";
 import { startGestureService, stopGestureService, isGestureProcessAlive } from "@/lib/gesture-process";
+import { startTrellisService, stopTrellisService, isTrellisProcessAlive } from "@/lib/trellis-process";
+import { startTtsService, stopTtsService, isTtsProcessAlive } from "@/lib/tts-process";
+import { trellisHealth } from "@/lib/trellis";
 import { noteModelResidency, observeResidentModels } from "@/lib/vram-scheduler";
 
 // Server-side background loop. Started once from instrumentation.ts. Every tick it:
@@ -98,6 +101,58 @@ export async function reconcileModels(): Promise<void> {
     } else if ((!gesture.runtimeConfig.enabled || gesture.runtimeConfig.startupPolicy === "Disabled") && isUp) {
       stopGestureService();
       noteModelResidency(gesture.modelId, false);
+    }
+  }
+
+  // With the cron keepalive removed, GPT-SoVITS is fully gateway-managed and can
+  // follow the same lifecycle contract as the other dedicated GPU backends.
+  const tts = models.find((m) => m.modelId === "gpt-sovits");
+  if (tts?.runtimeConfig) {
+    const wantUp = tts.runtimeConfig.enabled && tts.runtimeConfig.startupPolicy === "Always Running";
+    const isUp = isTtsProcessAlive();
+    if (wantUp && !isUp) {
+      await startTtsService();
+    } else if ((!tts.runtimeConfig.enabled || tts.runtimeConfig.startupPolicy === "Disabled") && isUp) {
+      stopTtsService();
+      noteModelResidency(tts.modelId, false);
+    }
+  }
+
+  // TRELLIS.2: a separate process whose startup policy selects its VRAM behaviour.
+  //  - Always Running -> pinned resident in VRAM (started here with pin=true).
+  //  - On Demand      -> offloaded (near-zero idle VRAM); the VRAM scheduler starts
+  //                      it lazily on the first request with pin=false.
+  //  - Disabled       -> stopped.
+  // Switching policy re-spawns the service in the matching mode. We only act on a
+  // FULLY LOADED service (health.loaded) so we never kill an in-progress load.
+  const trellis = models.find((m) => m.modelId === "trellis-2");
+  if (trellis?.runtimeConfig) {
+    const cfg = trellis.runtimeConfig;
+    const isUp = isTrellisProcessAlive();
+    if (!cfg.enabled || cfg.startupPolicy === "Disabled") {
+      if (isUp) {
+        stopTrellisService();
+        noteModelResidency(trellis.modelId, false);
+      }
+    } else if (cfg.startupPolicy === "Always Running") {
+      if (!isUp) {
+        await startTrellisService(true); // pin resident in VRAM
+      } else {
+        const h = await trellisHealth(1500);
+        // Loaded but NOT pinned (e.g. was On Demand) -> drop; next tick re-spawns pinned.
+        if (h?.loaded?.trellis2 === true && h.pinned === false) {
+          stopTrellisService();
+          noteModelResidency(trellis.modelId, false);
+        }
+      }
+    } else if (isUp) {
+      // On Demand + enabled: if it is loaded and still pinned (left over from
+      // Always Running), drop it so the scheduler re-loads it offloaded on next use.
+      const h = await trellisHealth(1500);
+      if (h?.loaded?.trellis2 === true && h.pinned === true) {
+        stopTrellisService();
+        noteModelResidency(trellis.modelId, false);
+      }
     }
   }
 }

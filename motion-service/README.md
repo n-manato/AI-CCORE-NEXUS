@@ -1,6 +1,6 @@
 # motion-service (HY-Motion 1.0 → MMD .vmd)
 
-Independent localhost FastAPI backend behind the AICCORE Nexus gateway. Turns
+Independent localhost FastAPI backend behind the AICCORE-Nexus gateway. Turns
 English text into an MMD body-motion `.vmd` (text → SMPL motion → retarget → `.vmd`).
 Clients (Cline / PC-A VTuber) reach it ONLY through the gateway `/v1/motion/*` —
 this port is `127.0.0.1` only, exactly like Ollama and model-service.

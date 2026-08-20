@@ -81,6 +81,6 @@ export function promptBudget(b: ContextBudget): number {
 
 // Default system prompt used when a conversation/caller doesn't supply one.
 export const DEFAULT_SYSTEM_PROMPT =
-  "You are a helpful AI assistant served by the AICCORE Nexus local gateway. " +
+  "You are a helpful AI assistant served by the AICCORE-Nexus local gateway. " +
   "Be concise and accurate. If earlier conversation has been summarized, treat " +
   "the provided summary and retrieved context as authoritative project memory.";

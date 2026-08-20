@@ -1,0 +1,12 @@
+# Service-only deps for trellis-service. The heavy TRELLIS.2 stack (torch, trellis2,
+# o-voxel, nvdiffrast, flash-attn, flexgemm, cumesh) is installed by install_trellis.sh
+# via the upstream TRELLIS.2 setup.sh into the `trellis2` conda env.
+fastapi>=0.111
+uvicorn>=0.30
+python-multipart>=0.0.9
+pillow>=10.0
+# TRELLIS.2's DinoV3FeatureExtractor hand-writes the ViT forward against the
+# transformers 4.57 DINOv3ViTModel layout (model.layer / rope_embeddings). setup.sh
+# installs transformers UNPINNED -> 5.x refactored it away (model has no `.layer`),
+# which 500s at generation. Pin 4.57.x.
+transformers==4.57.1

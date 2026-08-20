@@ -1,4 +1,4 @@
-"""Motion-service: HY-Motion 1.0 text -> MMD .vmd, behind the AICCORE Nexus gateway.
+"""Motion-service: HY-Motion 1.0 text -> MMD .vmd, behind the AICCORE-Nexus gateway.
 
 Independent localhost FastAPI process (own venv), bound to 127.0.0.1 like the other
 backends (Ollama, model-service). The Next.js gateway proxies /v1/motion/* here and

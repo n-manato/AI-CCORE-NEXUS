@@ -1,0 +1,38 @@
+{
+  "image_path": "inputs/01_corridor.png",
+  "providers": {
+    "geometry": "moge-2-vitl-normal",
+    "detector": "grounding-dino-swin-t",
+    "segmentation": "sam2.1-hiera-large",
+    "reasoning": null
+  },
+  "concepts": [
+    "sky",
+    "ground",
+    "path",
+    "road",
+    "water",
+    "vegetation",
+    "tree",
+    "building",
+    "wall",
+    "tower",
+    "bridge",
+    "archway",
+    "portal",
+    "boat",
+    "landmark"
+  ],
+  "options": {
+    "max_image_side": 1024,
+    "precision": "bf16",
+    "sequential_unload": true,
+    "box_threshold": 0.3,
+    "text_threshold": 0.25,
+    "return_depth": true,
+    "return_normals": true,
+    "return_instances": true,
+    "return_walkability": true,
+    "return_scene_graph": false
+  }
+}

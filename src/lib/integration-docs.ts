@@ -49,7 +49,7 @@ export const OPENAI_MODEL_MAP: ModelMap[] = [
   { openai: "gpt-4o-mini / gpt-3.5-turbo", gateway: "qwen3-8b", via: "/v1/chat/completions" },
   { openai: "gpt-4o / gpt-4.1", gateway: "qwen3-14b or qwen3-32b-4bit", via: "/v1/chat/completions" },
   { openai: "gpt-4o (coding)", gateway: "qwen2.5-coder-14b", via: "/v1/chat/completions" },
-  { openai: "gpt-4o vision", gateway: "qwen2.5-vl-7b", via: "/v1/vision/chat (file upload, not chat content arrays)" },
+  { openai: "gpt-4o vision", gateway: "qwen3.6-27b", via: "/v1/responses (input_image) or /v1/vision/chat (file upload)" },
   { openai: "tts-1 / tts-1-hd", gateway: "kokoro-82m / gpt-sovits", via: "/v1/audio/speech" },
   { openai: "whisper-1", gateway: "faster-whisper-medium / large-v3", via: "/v1/audio/transcriptions" },
   { openai: "dall-e-3 / gpt-image-1", gateway: "flux-schnell / flux-dev", via: "/v1/images/generations (Job)" },

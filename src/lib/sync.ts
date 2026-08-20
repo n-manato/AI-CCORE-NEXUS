@@ -4,6 +4,8 @@ import { ollamaTags, ollamaRunning, OLLAMA_MAP, LLM_APP_IDS, VISION_APP_IDS } fr
 import { sidecarHealth, SIDECAR_MODELS } from "@/lib/sidecar";
 import { motionHealth, MOTION_MODELS } from "@/lib/motion";
 import { gestureHealth, GESTURE_MODELS } from "@/lib/gesture";
+import { trellisHealth, TRELLIS_MODELS } from "@/lib/trellis";
+import { ttsHealth, TTS_MODEL_ID } from "@/lib/tts";
 import { API_MODEL } from "@/lib/constants";
 
 export interface SyncResult {
@@ -33,6 +35,11 @@ const GESTURE_API: Record<string, string> = {
   "Gesture Generation": "gesture",
 };
 
+// api_status.apiName -> trellis-service capability key
+const TRELLIS_API: Record<string, string> = {
+  "3D Generation": "image_to_3d",
+};
+
 // Syncs every label in the app to the REAL state of the backends:
 //  - Ollama for LLM Chat / Vision QA (+ their models)
 //  - Python sidecar for OCR / detection / STT / TTS / background removal
@@ -59,6 +66,13 @@ export async function syncBackends(): Promise<SyncResult> {
   const ghealth = await gestureHealth();
   const gestureCaps = ghealth?.capabilities ?? {};
   const gestureLoaded = ghealth?.loaded ?? {};
+
+  const thealth = await trellisHealth();
+  const trellisCaps = thealth?.capabilities ?? {};
+  const trellisLoaded = thealth?.loaded ?? {};
+
+  // Rem voice stack (voice_service :9881 -> GPT-SoVITS :9880) backing `gpt-sovits`.
+  const ttsUp = (await ttsHealth()) !== null;
 
   const installed: string[] = [];
   const running: string[] = [];
@@ -138,8 +152,28 @@ export async function syncBackends(): Promise<SyncResult> {
       .catch(() => {});
   }
 
+  // --- TRELLIS.2-service-backed models ---
+  for (const appId of Object.keys(TRELLIS_MODELS)) {
+    const isRunning = !!trellisLoaded["trellis2"];
+    installed.push(appId);
+    if (isRunning) running.push(appId);
+    await prisma.modelRuntimeState
+      .update({ where: { modelId: appId }, data: { currentStatus: isRunning ? "Running" : "Stopped", actualDevice: isRunning ? "GPU" : null } })
+      .catch(() => {});
+  }
+
+  // --- GPT-SoVITS voice stack backing `gpt-sovits` (TTS) ---
+  // installed stays registry-managed so the model is UI-controllable even when the
+  // stack is down; currentStatus tracks the live voice_service (:9881) process.
+  {
+    if (ttsUp) running.push(TTS_MODEL_ID);
+    await prisma.modelRuntimeState
+      .update({ where: { modelId: TTS_MODEL_ID }, data: { currentStatus: ttsUp ? "Running" : "Stopped", actualDevice: ttsUp ? "GPU1" : null } })
+      .catch(() => {});
+  }
+
   // --- Models with no backend at all -> not installed, stopped (honest) ---
-  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS), ...Object.keys(GESTURE_MODELS)];
+  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS), ...Object.keys(GESTURE_MODELS), ...Object.keys(TRELLIS_MODELS), TTS_MODEL_ID];
   await prisma.modelRuntimeState
     .updateMany({ where: { modelId: { notIn: managed }, currentStatus: { not: "Error" } }, data: { currentStatus: "Stopped", currentVramMb: 0, actualDevice: null } })
     .catch(() => {});
@@ -185,6 +219,13 @@ export async function syncBackends(): Promise<SyncResult> {
     } else if (api.apiName === "Vision QA") {
       status = visionOnline ? "Online" : anyVisionInstalled ? "Disabled" : "Offline";
       if (visionOnline) { currentModel = visionOnline; backend = "Ollama"; }
+    } else if (api.apiName === "TTS") {
+      // Real TTS is the GPT-SoVITS voice stack (:9881); the Kokoro sidecar is a
+      // fallback. An enabled On Demand stack is available even while stopped:
+      // gateRequest acquires its lease and starts it before forwarding the call.
+      status = ttsUp || caps.tts || isEnabled(TTS_MODEL_ID) ? "Online" : "Offline";
+      if (ttsUp) backend = "GPT-SoVITS";
+      else if (caps.tts) backend = "Sidecar";
     } else if (api.apiName in SIDECAR_API) {
       const cap = SIDECAR_API[api.apiName];
       status = caps[cap] ? "Online" : "Not Installed";
@@ -197,8 +238,16 @@ export async function syncBackends(): Promise<SyncResult> {
       if (motionCaps[cap]) backend = "HY-Motion";
     } else if (api.apiName in GESTURE_API) {
       const cap = GESTURE_API[api.apiName];
-      status = gestureCaps[cap] ? "Online" : "Offline";
+      // A stopped, enabled On Demand process is ready to be started by the
+      // scheduler; do not report it as a degraded backend.
+      status = gestureCaps[cap] || isEnabled("gesturelsm-1") ? "Online" : "Offline";
       if (gestureCaps[cap]) backend = "GestureLSM";
+    } else if (api.apiName in TRELLIS_API) {
+      const cap = TRELLIS_API[api.apiName];
+      // Installed on disk. A stopped, enabled On Demand process is still
+      // serviceable and must not make the server dashboard Degraded.
+      status = trellisCaps[cap] || isEnabled("trellis-2") ? "Online" : "Offline";
+      if (trellisCaps[cap]) backend = "TRELLIS";
     } else {
       status = "Not Installed"; // no backend wired yet
     }

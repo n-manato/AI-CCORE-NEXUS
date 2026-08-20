@@ -60,7 +60,7 @@ function genKey() {
   };
 }
 
-const CATEGORIES = ["LLM", "TTS", "STT", "Image", "Vision", "Video", "Motion"] as const;
+const CATEGORIES = ["LLM", "TTS", "STT", "Image", "Vision", "Video", "Motion", "3D"] as const;
 const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000);
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -132,6 +132,13 @@ const MODELS: ModelSeed[] = [
   { modelId: "motiongpt", category: "Motion", function: "Motion generation quality", modelName: "MotionGPT", backend: "MotionGPT", installed: false, vmin: 8, vmax: 10, rule: "1GPU", multi: false, policy: "On Demand", runtime: "Job", size: "Medium", enabled: false, maxConcurrent: 1, state: "Stopped" },
   { modelId: "robot-controller", category: "Motion", function: "Robot motion fast", modelName: "Custom preset controller", backend: "Custom", installed: true, vmin: 0, vmax: 0, rule: "CPU", multi: false, policy: "On Demand", runtime: "Real-time", size: "Small", enabled: false, maxConcurrent: 1, state: "Error" },
   { modelId: "hy-motion-1", category: "Motion", function: "Text→3D body motion (SMPL→VMD)", modelName: "HY-Motion 1.0", backend: "HY-Motion", installed: true, vmin: 20, vmax: 23, rule: "1GPU", multi: false, policy: "On Demand", runtime: "Sync", size: "Large", enabled: false, maxConcurrent: 1, state: "Stopped" },
+
+  // --- 3D (image → 3D) ---
+  // vmax reflects the 512-res resident footprint (~16-18GB). The 24-30GB figure is
+  // a transient GLB-extraction peak at high res on its own dedicated card, not a
+  // steady reservation — using it here would spuriously mark a lone 24GB GPU "Over
+  // Limit". The runtime scheduler still guards real OOM via live nvidia-smi.
+  { modelId: "trellis-2", category: "3D", function: "Image → PBR-textured 3D asset (GLB)", modelName: "TRELLIS.2-4B", backend: "TRELLIS", installed: false, vmin: 14, vmax: 18, rule: "1GPU", multi: false, policy: "On Demand", runtime: "Sync", size: "XLarge", enabled: false, maxConcurrent: 1, state: "Stopped" },
 ];
 
 function devicePlan(m: ModelSeed): string {
@@ -163,7 +170,7 @@ const APIS: ApiSeed[] = [
   { apiName: "STT", category: "STT", status: "Online", model: "faster-whisper medium", backend: "faster-whisper", mode: "Real-time", usesGpu: true, queue: 0, running: 1, avg: 650, errors: 0, description: "Speech to text transcription." },
   { apiName: "Speech Enhancement", category: "STT", status: "Online", model: "DeepFilterNet", backend: "DeepFilterNet", mode: "Sync", usesGpu: false, queue: 0, running: 0, avg: 280, errors: 0, description: "Noise reduction / speech enhancement." },
   { apiName: "Voice Conversion", category: "STT", status: "Offline", model: "GPT-SoVITS", backend: "GPT-SoVITS", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Voice conversion (on demand)." },
-  { apiName: "Vision QA", category: "Vision", status: "Offline", model: "Qwen2.5-VL-7B", backend: "vLLM", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Image question answering (on demand)." },
+  { apiName: "Vision QA", category: "Vision", status: "Offline", model: "Qwen3.6-27B", backend: "Ollama", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Image question answering and visual reasoning." },
   { apiName: "OCR", category: "Vision", status: "Online", model: "PP-OCRv5", backend: "PaddleOCR", mode: "Sync", usesGpu: false, queue: 0, running: 0, avg: 410, errors: 0, description: "Optical character recognition." },
   { apiName: "Object Detection", category: "Vision", status: "Online", model: "YOLO11s", backend: "Ultralytics", mode: "Real-time", usesGpu: true, queue: 0, running: 1, avg: 35, errors: 0, description: "Object detection." },
   { apiName: "Segmentation", category: "Vision", status: "Not Installed", model: null, backend: "SAM2", mode: "Job", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Image segmentation (not installed)." },
@@ -176,6 +183,7 @@ const APIS: ApiSeed[] = [
   { apiName: "Lip Sync", category: "Video", status: "Not Installed", model: null, backend: "MuseTalk", mode: "Job", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Lip sync video job (not installed)." },
   { apiName: "Motion Generation", category: "Motion", status: "Offline", model: "HY-Motion 1.0", backend: "HY-Motion", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "English text → MMD .vmd body motion (HY-Motion 1.0)." },
   { apiName: "Robot Motion", category: "Motion", status: "Error", model: "Custom preset controller", backend: "Custom", mode: "Real-time", usesGpu: false, queue: 0, running: 0, avg: 0, errors: 3, description: "Robot motion controller (backend error)." },
+  { apiName: "3D Generation", category: "3D", status: "Not Installed", model: null, backend: "TRELLIS", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Single image → PBR-textured 3D asset (GLB) via TRELLIS.2 (not installed)." },
 ];
 
 async function clearAll() {
@@ -259,7 +267,7 @@ async function main() {
     email: process.env.SEED_ADMIN_EMAIL ?? "admin@example.com",
     password: process.env.SEED_ADMIN_PASSWORD ?? "change-me-in-env",
     role: "admin",
-    access: { LLM: true, TTS: true, STT: true, Image: true, Vision: true, Video: true, Motion: true },
+    access: { LLM: true, TTS: true, STT: true, Image: true, Vision: true, Video: true, Motion: true, "3D": true },
   });
 
   // API status

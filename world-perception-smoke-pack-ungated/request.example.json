@@ -1,0 +1,19 @@
+{
+  "image_path": "inputs/01_corridor.png",
+  "providers": {
+    "geometry": "moge-2-vitl-normal",
+    "reasoning": "qwen3-vl-8b-instruct",
+    "detector": "grounding-dino-swin-t",
+    "segmentation": "sam2.1-hiera-large"
+  },
+  "options": {
+    "max_image_side": 1024,
+    "return_depth": true,
+    "return_normals": true,
+    "return_instances": true,
+    "return_walkability": true,
+    "return_scene_graph": true,
+    "precision": "bf16",
+    "sequential_unload": true
+  }
+}

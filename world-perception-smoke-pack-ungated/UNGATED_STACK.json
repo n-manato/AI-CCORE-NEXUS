@@ -1,0 +1,14 @@
+{
+  "packVersion": 2,
+  "accessPolicy": "ungated-checkpoints-only",
+  "providerChain": [
+    "moge-2-vitl-normal",
+    "qwen3-vl-8b-instruct",
+    "grounding-dino-swin-t",
+    "sam2.1-hiera-large"
+  ],
+  "notes": [
+    "No gated SAM 3 or SAM 3.1 checkpoint is required.",
+    "All provider processes should run sequentially and exit after producing artifacts."
+  ]
+}

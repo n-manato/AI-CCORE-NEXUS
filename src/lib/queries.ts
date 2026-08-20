@@ -188,10 +188,11 @@ interface CatCounts {
   Vision: number;
   Video: number;
   Motion: number;
+  "3D": number;
 }
 
 function emptyCounts(): CatCounts {
-  return { LLM: 0, TTS: 0, STT: 0, Image: 0, Vision: 0, Video: 0, Motion: 0 };
+  return { LLM: 0, TTS: 0, STT: 0, Image: 0, Vision: 0, Video: 0, Motion: 0, "3D": 0 };
 }
 
 export async function getAdminUsage() {

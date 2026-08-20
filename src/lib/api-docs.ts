@@ -33,6 +33,7 @@ export interface EndpointDoc {
   request: ReqSpec;
   responseExample: string;
   binaryResponse?: boolean;
+  outputFile?: string; // filename for a binary response in generated examples (default out.bin)
   notes?: string;
 }
 
@@ -67,9 +68,10 @@ export function toCurl(base: string, ep: EndpointDoc): string {
   const url = fullUrl(base, ep.path);
   const auth = `-H "Authorization: Bearer $LAG_API_KEY"`;
   if (ep.method === "GET") return `curl ${url} \\\n  ${auth}`;
+  const outFile = ep.outputFile ?? "out.bin";
   const r = ep.request;
   if (r.kind === "json") {
-    const out = ep.binaryResponse ? ` \\\n  --output out.bin` : "";
+    const out = ep.binaryResponse ? ` \\\n  --output ${outFile}` : "";
     return `curl ${url} \\\n  ${auth} \\\n  -H "Content-Type: application/json" \\\n  -d '${JSON.stringify(r.body)}'${out}`;
   }
   if (r.kind === "multipart") {
@@ -78,7 +80,7 @@ export function toCurl(base: string, ep: EndpointDoc): string {
       auth,
       ...Object.entries(r.fields).map(([k, v]) => `-F ${k}=${v}`),
       ...r.files.map((f) => `-F ${f.field}=@${f.example}`),
-      ...(ep.binaryResponse ? ["--output out.bin"] : []),
+      ...(ep.binaryResponse ? [`--output ${outFile}`] : []),
     ];
     return parts.join(" \\\n  ");
   }
@@ -91,15 +93,19 @@ export function toPython(base: string, ep: EndpointDoc): string {
   if (ep.method === "GET") {
     return `${head}resp = requests.get("${url}", headers=headers)\nprint(resp.json())`;
   }
+  const outFile = ep.outputFile ?? "out.bin";
   const r = ep.request;
   if (r.kind === "json") {
     if (ep.binaryResponse) {
-      return `${head}resp = requests.post(\n    "${url}",\n    headers=headers,\n    json=${pyLit(r.body, 1)},\n)\nwith open("out.bin", "wb") as f:\n    f.write(resp.content)`;
+      return `${head}resp = requests.post(\n    "${url}",\n    headers=headers,\n    json=${pyLit(r.body, 1)},\n)\nwith open("${outFile}", "wb") as f:\n    f.write(resp.content)`;
     }
     return `${head}resp = requests.post(\n    "${url}",\n    headers=headers,\n    json=${pyLit(r.body, 1)},\n)\nprint(resp.json())`;
   }
   if (r.kind === "multipart") {
     const files = "{" + r.files.map((f) => `"${f.field}": open("${f.example}", "rb")`).join(", ") + "}";
+    if (ep.binaryResponse) {
+      return `${head}resp = requests.post(\n    "${url}",\n    headers=headers,\n    data=${pyLit(r.fields, 1)},\n    files=${files},\n)\nwith open("${outFile}", "wb") as f:\n    f.write(resp.content)`;
+    }
     return `${head}resp = requests.post(\n    "${url}",\n    headers=headers,\n    data=${pyLit(r.fields, 1)},\n    files=${files},\n)\nprint(resp.json())`;
   }
   return `${head}resp = requests.post("${url}", headers=headers)\nprint(resp.json())`;
@@ -108,6 +114,7 @@ export function toPython(base: string, ep: EndpointDoc): string {
 export function toNode(base: string, ep: EndpointDoc): string {
   const url = fullUrl(base, ep.path);
   const bearer = "Authorization: `Bearer ${process.env.LAG_API_KEY}`";
+  const outFile = ep.outputFile ?? "out.bin";
   if (ep.method === "GET") {
     return `const res = await fetch("${url}", {\n  headers: { ${bearer} },\n});\nconsole.log(await res.json());`;
   }
@@ -115,7 +122,7 @@ export function toNode(base: string, ep: EndpointDoc): string {
   if (r.kind === "json") {
     const body = JSON.stringify(r.body, null, 2).replace(/\n/g, "\n  ");
     if (ep.binaryResponse) {
-      return `import { writeFile } from "node:fs/promises";\n\nconst res = await fetch("${url}", {\n  method: "POST",\n  headers: {\n    ${bearer},\n    "Content-Type": "application/json",\n  },\n  body: JSON.stringify(${body}),\n});\nawait writeFile("out.bin", Buffer.from(await res.arrayBuffer()));`;
+      return `import { writeFile } from "node:fs/promises";\n\nconst res = await fetch("${url}", {\n  method: "POST",\n  headers: {\n    ${bearer},\n    "Content-Type": "application/json",\n  },\n  body: JSON.stringify(${body}),\n});\nawait writeFile("${outFile}", Buffer.from(await res.arrayBuffer()));`;
     }
     return `const res = await fetch("${url}", {\n  method: "POST",\n  headers: {\n    ${bearer},\n    "Content-Type": "application/json",\n  },\n  body: JSON.stringify(${body}),\n});\nconsole.log(await res.json());`;
   }
@@ -123,6 +130,9 @@ export function toNode(base: string, ep: EndpointDoc): string {
     const lines = ["const form = new FormData();"];
     for (const [k, v] of Object.entries(r.fields)) lines.push(`form.append("${k}", "${v}");`);
     for (const f of r.files) lines.push(`form.append("${f.field}", fileBlob, "${f.example}"); // a File/Blob`);
+    if (ep.binaryResponse) {
+      return `import { writeFile } from "node:fs/promises";\n\n${lines.join("\n")}\n\nconst res = await fetch("${url}", {\n  method: "POST",\n  headers: { ${bearer} },\n  body: form,\n});\nawait writeFile("${outFile}", Buffer.from(await res.arrayBuffer()));`;
+    }
     return `${lines.join("\n")}\n\nconst res = await fetch("${url}", {\n  method: "POST",\n  headers: { ${bearer} },\n  body: form,\n});\nconsole.log(await res.json());`;
   }
   return `const res = await fetch("${url}", {\n  method: "POST",\n  headers: { ${bearer} },\n});\nconsole.log(await res.json());`;
@@ -339,13 +349,13 @@ export const ENDPOINTS: EndpointDoc[] = [
     mode: "Sync",
     implemented: "skeleton",
     summary: "Ask a question about an image.",
-    modelSelection: "qwen2.5-vl-7b (fast); qwen2.5-vl-32b for quality (admin-installed).",
+    modelSelection: "qwen3.6-27b (current Ollama reasoning + vision model); qwen2.5-vl-7b/32b remain available when installed.",
     params: [
       { name: "file", type: "file", required: true, description: "Image file." },
       { name: "prompt", type: "string", required: true, description: "Question about the image." },
       { name: "model", type: "string", required: false, description: "Vision model id." },
     ],
-    request: { kind: "multipart", fields: { model: "qwen2.5-vl-7b", prompt: "What is in this image?" }, files: [{ field: "file", example: "image.jpg" }] },
+    request: { kind: "multipart", fields: { model: "qwen3.6-27b", prompt: "What is in this image?" }, files: [{ field: "file", example: "image.jpg" }] },
     responseExample: `{ "object": "mock", "api": "Vision QA", "message": "..." }`,
     notes: "Offline by default (on demand); returns 503 until started.",
   },
@@ -553,6 +563,28 @@ export const ENDPOINTS: EndpointDoc[] = [
     request: { kind: "json", body: { command: "move_forward", params: { distance_m: 0.5, speed: 0.3 } } },
     responseExample: `{ "object": "mock", "api": "Robot Motion", "message": "..." }`,
     notes: "Controller is in an Error state in seed data; returns 503 until restarted.",
+  },
+  {
+    category: "3D",
+    apiName: "3D Generation",
+    name: "Image to 3D",
+    method: "POST",
+    path: "/v1/3d/generations",
+    mode: "Sync",
+    implemented: "full",
+    summary: "Turn a single image into a PBR-textured 3D asset (GLB).",
+    modelSelection: "TRELLIS.2-4B (selected server-side; no model field needed).",
+    params: [
+      { name: "image", type: "file", required: true, description: "Input image (png/jpg)." },
+      { name: "resolution", type: "string", required: false, description: "512 | 1024 | 1536 (default 512). On a 24GB GPU use 512 or 1024; 1536 needs a >24GB card." },
+      { name: "seed", type: "integer", required: false, description: "Sampling seed (default 42)." },
+      { name: "texture_size", type: "integer", required: false, description: "Texture resolution (default 2048)." },
+    ],
+    request: { kind: "multipart", fields: { resolution: "512" }, files: [{ field: "image", example: "photo.png" }] },
+    responseExample: `<binary .glb> (Content-Type: model/gltf-binary)`,
+    binaryResponse: true,
+    outputFile: "model.glb",
+    notes: "Sync, ~seconds-to-a-minute. 1GPU, maxConcurrent 1 — concurrent callers queue or get 429. Single input image only (no multi-view fusion); the response body IS the .glb.",
   },
 ];
 

@@ -41,7 +41,21 @@ logs/
 **/logs/
 **/pool_cache/
 **/.phase*_install_done
+**/.*.pid
 *.bak
+*.bak-*
+*.bak_*
+
+# Backend stack colocated under stack/ (moved here 2026-08-06). Each is its own
+# upstream checkout (GPT-SoVITS, Applio, ActionPlan-Code, world-perception), so
+# they stay out of this repo rather than becoming embedded repos / submodules.
+/stack/
+
+# TRELLIS.2 upstream checkout vendored under the trellis-service sidecar.
+# It carries its own .git (~820MB incl. submodules); the service wrapper
+# (trellis_service.py / trellis_runner.py / install_trellis.sh) is tracked, the
+# upstream tree is not. Re-create it with scripts/setup-trellis.ts.
+/trellis-service/TRELLIS.2/
 
 # Local tool settings
 .claude/settings.local.json

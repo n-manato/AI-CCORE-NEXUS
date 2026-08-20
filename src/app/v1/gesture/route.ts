@@ -25,6 +25,11 @@ export async function POST(req: Request) {
     const audio = form.get("audio");
     const text = (form.get("text") as string | null) ?? "";
     const format = (form.get("format") as string | null) ?? "joints";
+    // optional speed/transfer knobs — passthrough, unset = service default.
+    const precision = (form.get("precision") as string | null) ?? "";
+    const steps = (form.get("steps") as string | null) ?? "";
+    const guidanceScale = (form.get("guidance_scale") as string | null) ?? "";
+    const dur = (form.get("dur") as string | null) ?? "";
     if (!(audio instanceof Blob)) {
       await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: MODEL, path: PATH, code: "bad_request" });
       return gatewayError("bad_request", { detail: "audio file is required" });
@@ -36,7 +41,7 @@ export async function POST(req: Request) {
         await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: true, model: MODEL, path: PATH, code: "unavailable" });
         return gatewayError("unavailable", { detail: "gesture service unreachable" });
       }
-      const npz = await gestureGenerate(audio, text, format);
+      const npz = await gestureGenerate(audio, text, format, { precision, steps, guidanceScale, dur });
       await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model: MODEL, path: PATH });
       return new NextResponse(new Uint8Array(npz), {
         status: 200,

@@ -24,6 +24,19 @@ export interface ForecastModel {
   maxConcurrent: number;
   multiGpuSupported: boolean;
   separateProcessPerRequest: boolean;
+  // Dedicated backends can be physically pinned by their launch scripts.
+  gpuAffinity?: "GPU0" | "GPU1";
+}
+
+// Keep capacity planning aligned with CUDA_VISIBLE_DEVICES in the dedicated
+// service launchers. These services cannot be freely bin-packed to the other GPU.
+export function gpuAffinityForModel(modelId: string): "GPU0" | "GPU1" | undefined {
+  switch (modelId) {
+    case "gesturelsm-1": return "GPU0";
+    case "gpt-sovits":
+    case "trellis-2": return "GPU1";
+    default: return undefined;
+  }
 }
 
 export interface Contributor {
@@ -96,8 +109,8 @@ export function forecastVram(
   let invalidReason = "";
   const contributors: Contributor[] = [];
 
-  // Place 2GPU models first (they constrain both cards), then bin-pack 1GPU
-  // models onto whichever card currently has more free space.
+  // Place 2GPU models first, then hard-pinned services, then bin-pack the
+  // remaining 1GPU models onto whichever card currently has more free space.
   const twoGpu = active.filter((m) => m.devicePlan === "2GPU");
   const oneGpu = active.filter((m) => m.devicePlan === "1GPU");
   const cpu = active.filter((m) => m.devicePlan === "CPU");
@@ -119,7 +132,15 @@ export function forecastVram(
     });
   }
 
-  for (const m of oneGpu) {
+  const fixedGpu = active.filter((m) => m.devicePlan === "1GPU" && m.gpuAffinity);
+  for (const m of fixedGpu) {
+    const fp = estimatedPeakVram(m);
+    if (m.gpuAffinity === "GPU0") gpu0 += fp;
+    else gpu1 += fp;
+    contributors.push({ modelId: m.modelId, modelName: m.modelName, device: m.gpuAffinity!, vramGb: round1(fp) });
+  }
+
+  for (const m of oneGpu.filter((m) => !m.gpuAffinity)) {
     const fp = estimatedPeakVram(m);
     if (gpu0 <= gpu1) {
       gpu0 += fp;

@@ -2,14 +2,18 @@ import "server-only";
 
 import { prisma } from "@/lib/db";
 import { computeDevicePlan } from "@/lib/runtime";
-import { estimatedPeakVram, forecastVram, type ForecastModel } from "@/lib/vram";
+import { estimatedPeakVram, forecastVram, gpuAffinityForModel, type ForecastModel } from "@/lib/vram";
 import { getGpuReport } from "@/lib/gpu";
 import { OLLAMA_MAP, ollamaRunning, ollamaSetLoaded } from "@/lib/ollama";
 import { SIDECAR_MODELS, sidecarHealth, sidecarUnload } from "@/lib/sidecar";
 import { MOTION_MODELS, motionHealth } from "@/lib/motion";
 import { GESTURE_MODELS, gestureHealth } from "@/lib/gesture";
+import { TRELLIS_MODELS, trellisHealth } from "@/lib/trellis";
 import { isGestureProcessAlive, startGestureService, stopGestureService } from "@/lib/gesture-process";
 import { isMotionProcessAlive, startMotionService, stopMotionService } from "@/lib/motion-process";
+import { isTrellisProcessAlive, startTrellisService, stopTrellisService } from "@/lib/trellis-process";
+import { isTtsProcessAlive, startTtsService, stopTtsService } from "@/lib/tts-process";
+import { TTS_MODEL_ID, ttsHealth } from "@/lib/tts";
 import { GPU_USABLE_VRAM_GB, GPU_VRAM_RESERVE_GB } from "@/lib/constants";
 
 const WAIT_TIMEOUT_MS = Number(process.env.VRAM_WAIT_TIMEOUT_MS ?? 120_000);
@@ -79,6 +83,10 @@ async function actualResidentModelIds(): Promise<Set<string>> {
     for (const [id, cap] of Object.entries(SIDECAR_MODELS)) if (sidecar?.loaded[cap]) state.resident.add(id);
     if (isMotionProcessAlive()) for (const id of Object.keys(MOTION_MODELS)) state.resident.add(id);
     if (isGestureProcessAlive()) for (const id of Object.keys(GESTURE_MODELS)) state.resident.add(id);
+    if (isTrellisProcessAlive()) for (const id of Object.keys(TRELLIS_MODELS)) state.resident.add(id);
+    // Preserve a GPT-SoVITS process observed after a gateway restart. It remains
+    // eligible for normal On Demand eviction.
+    if (isTtsProcessAlive()) state.resident.add(TTS_MODEL_ID);
     state.initialized = true;
   }
   const ids = new Set<string>([...state.resident, ...state.active.keys()]);
@@ -108,6 +116,7 @@ function toForecast(m: RegistryRow): ForecastModel {
     maxConcurrent: m.runtimeConfig?.maxConcurrent ?? 1,
     multiGpuSupported: m.multiGpuSupported,
     separateProcessPerRequest: m.separateProcessPerRequest,
+    gpuAffinity: gpuAffinityForModel(m.modelId),
   };
 }
 
@@ -134,6 +143,11 @@ function fits(rows: RegistryRow[], resident: Set<string>, target: RegistryRow): 
   if (plan === "2GPU") {
     return used.length >= 2 && used[0]! + need / 2 <= usable[0]! && used[1]! + need / 2 <= usable[1]!;
   }
+  const affinity = gpuAffinityForModel(target.modelId);
+  if (affinity) {
+    const index = affinity === "GPU0" ? 0 : 1;
+    return used[index] !== undefined && used[index]! + need <= (usable[index] ?? 0);
+  }
   return used.some((gb, i) => gb + need <= (usable[i] ?? 0));
 }
 
@@ -144,6 +158,8 @@ async function unloadModel(m: RegistryRow): Promise<void> {
   else if (cap) await sidecarUnload(cap);
   else if (m.modelId in MOTION_MODELS) stopMotionService();
   else if (m.modelId in GESTURE_MODELS) stopGestureService();
+  else if (m.modelId in TRELLIS_MODELS) stopTrellisService();
+  else if (m.modelId === TTS_MODEL_ID) stopTtsService();
   else throw new Error(`No unload adapter for ${m.modelId}`);
 
   await prisma.modelRuntimeState.update({
@@ -175,6 +191,28 @@ async function loadModel(m: RegistryRow): Promise<void> {
     const gdeadline = Date.now() + 60_000;
     while (!(await gestureHealth(1500))) {
       if (Date.now() >= gdeadline) throw new Error("gesture service did not become ready within 60s");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  else if (m.modelId in TRELLIS_MODELS) {
+    // On Demand load path -> offloaded (pin=false). Always Running pinning is
+    // handled by the worker reconcile loop.
+    await startTrellisService(false);
+    // Wait for the PORT to bind (weights load in a background thread and on the
+    // first request; the port answers /healthz quickly even while loading).
+    const tdeadline = Date.now() + 120_000;
+    while (!(await trellisHealth(1500))) {
+      if (Date.now() >= tdeadline) throw new Error("trellis service did not become ready within 120s");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  else if (m.modelId === TTS_MODEL_ID) {
+    // On Demand: bring the voice stack up if it isn't (idempotent; usually already
+    // resident via cron keepalive, so this is a no-op fast path).
+    await startTtsService();
+    const vdeadline = Date.now() + 60_000;
+    while (!(await ttsHealth(1500))) {
+      if (Date.now() >= vdeadline) throw new Error("voice stack did not become ready within 60s");
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
@@ -228,7 +266,7 @@ async function attemptAcquire(modelId: string): Promise<Attempt> {
           m.modelId !== modelId &&
           policy === "On Demand" &&
           activeCount(m.modelId) === 0 &&
-          (!!OLLAMA_MAP[m.modelId] || !!SIDECAR_MODELS[m.modelId] || m.modelId in MOTION_MODELS);
+          (!!OLLAMA_MAP[m.modelId] || !!SIDECAR_MODELS[m.modelId] || m.modelId in MOTION_MODELS || m.modelId in TRELLIS_MODELS);
       })
       .sort((a, b) => (a.runtimeState?.lastUsedAt?.getTime() ?? 0) - (b.runtimeState?.lastUsedAt?.getTime() ?? 0));
 

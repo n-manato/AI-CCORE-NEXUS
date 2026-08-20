@@ -20,6 +20,7 @@ export const CATEGORIES = [
   "Vision",
   "Video",
   "Motion",
+  "3D",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 
@@ -174,13 +175,14 @@ export type AdminAction = (typeof ADMIN_ACTIONS)[number];
 // Only APIs with a real backend are listed; others are gated by status alone.
 export const API_MODEL: Record<string, string> = {
   "LLM Chat": "qwen3-8b",
-  "Vision QA": "qwen2.5-vl-7b",
+  "Vision QA": "qwen3.6-27b",
   OCR: "paddleocr",
   "Object Detection": "yolo11s",
   STT: "faster-whisper-medium",
-  TTS: "kokoro-82m",
+  TTS: "gpt-sovits",
   "Background Removal": "rembg",
   "Motion Generation": "hy-motion-1",
+  "3D Generation": "trellis-2",
 };
 
 // Maps each gateway endpoint to the access category that governs it.
@@ -204,4 +206,5 @@ export const ENDPOINT_CATEGORY: Record<string, Category> = {
   "/v1/video/lip-sync/jobs": "Video",
   "/v1/motion/generate": "Motion",
   "/v1/robot-motion/commands": "Motion",
+  "/v1/3d/generations": "3D",
 };

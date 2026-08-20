@@ -100,7 +100,7 @@ export function ModelRuntimeTable({
                   onChange={(e) => onEdit(r.modelId, { startupPolicy: e.target.value as RuntimeRow["startupPolicy"] })}
                   className="w-36"
                 >
-                  {STARTUP_POLICIES.map((p) => (
+                  {STARTUP_POLICIES.filter((p) => p !== "Disabled").map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>

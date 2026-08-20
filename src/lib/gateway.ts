@@ -171,9 +171,12 @@ function acquireSlot(modelId: string, limit: number): (() => void) | null {
 // ---- Maps each endpoint path to its API name + governing category ----
 
 export const ENDPOINT_API: Record<string, { apiName: string; category: Category }> = {
+  "/v1/responses": { apiName: "LLM Chat", category: "LLM" },
   "/v1/chat/completions": { apiName: "LLM Chat", category: "LLM" },
   "/v1/rag/query": { apiName: "LLM RAG", category: "LLM" },
   "/v1/audio/speech": { apiName: "TTS", category: "TTS" },
+  "/v1/audio/stream": { apiName: "TTS", category: "TTS" },
+  "/v1/audio/weights": { apiName: "TTS", category: "TTS" },
   "/v1/audio/transcriptions": { apiName: "STT", category: "STT" },
   "/v1/audio/enhance": { apiName: "Speech Enhancement", category: "STT" },
   "/v1/audio/voice-conversion": { apiName: "Voice Conversion", category: "STT" },
@@ -190,7 +193,9 @@ export const ENDPOINT_API: Record<string, { apiName: string; category: Category 
   "/v1/video/lip-sync/jobs": { apiName: "Lip Sync", category: "Video" },
   "/v1/motion/generate": { apiName: "Motion Generation", category: "Motion" },
   "/v1/gesture": { apiName: "Gesture Generation", category: "Motion" },
+  "/v1/motion/stream": { apiName: "Gesture Generation", category: "Motion" },
   "/v1/robot-motion/commands": { apiName: "Robot Motion", category: "Motion" },
+  "/v1/3d/generations": { apiName: "3D Generation", category: "3D" },
 };
 
 // ---- Authentication ----
@@ -331,6 +336,7 @@ export async function gateRequest(
   req: Request,
   path: string,
   requestedModelId?: string,
+  opts?: { skipModelLease?: boolean },
 ): Promise<
   | { ok: true; auth: AuthedKey; apiName: string; category: Category; release: () => void }
   | { ok: false; response: NextResponse }
@@ -351,12 +357,18 @@ export async function gateRequest(
     return { ok: false, response: gatewayError("access_denied") };
   }
 
-  const status = await prisma.apiStatus.findUnique({ where: { apiName: mapping.apiName } });
-  if (!status || status.status === "Not Installed") {
-    return { ok: false, response: gatewayError("not_found", { detail: "API not installed" }) };
-  }
-  if (status.status !== "Online") {
-    return { ok: false, response: gatewayError("unavailable") };
+  // Externally-managed backends (vLLM) bypass the gateway's apiStatus/health gate:
+  // their availability isn't tracked here (the backend synchronizer can't probe
+  // them and would force the API "Disabled"/"Offline"), so the caller vouches for
+  // liveness. Auth + category access above still apply.
+  if (!opts?.skipModelLease) {
+    const status = await prisma.apiStatus.findUnique({ where: { apiName: mapping.apiName } });
+    if (!status || status.status === "Not Installed") {
+      return { ok: false, response: gatewayError("not_found", { detail: "API not installed" }) };
+    }
+    if (status.status !== "Online") {
+      return { ok: false, response: gatewayError("unavailable") };
+    }
   }
 
   // Runtime enforcement against the SPECIFIC model the caller asked for (falling
@@ -364,7 +376,10 @@ export async function gateRequest(
   // a disabled model is blocked, and Max Concurrent caps in-flight requests.
   const modelId = requestedModelId ?? API_MODEL[mapping.apiName];
   let release = () => {};
-  if (modelId) {
+  // vLLM (and any externally-managed backend) passes skipModelLease: its VRAM /
+  // loading is NOT gateway-managed, so skip the model VRAM lease + concurrency slot
+  // (auth + category access checks above still apply).
+  if (modelId && !opts?.skipModelLease) {
     const cfg = await prisma.modelRuntimeConfig.findUnique({ where: { modelId } });
     if (cfg && !cfg.enabled) {
       return { ok: false, response: gatewayError("unavailable", { detail: "model disabled by admin" }) };

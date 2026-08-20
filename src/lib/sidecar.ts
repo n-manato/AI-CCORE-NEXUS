@@ -21,14 +21,39 @@ export const SIDECAR_MODELS: Record<string, string> = {
   rembg: "removebg",
 };
 
+// Health is probed on the CRITICAL PATH: /v1/audio/transcriptions calls it
+// before every transcription to decide whether to use the sidecar, so an
+// uncached probe put a serialized round trip (measured 3.4ms on loopback) in
+// front of every spoken turn of a live conversation.
+//
+// A short TTL is safe here because the probe is not the safety mechanism — the
+// real call is. A sidecar that dies inside the TTL makes one request take the
+// error path it already handles; the next probe then reports it down. The TTL
+// is deliberately shorter than a human turn, so a recovering sidecar is picked
+// up within one exchange.
+const HEALTH_TTL_MS = 2000;
+let healthCache: { at: number; value: SidecarHealth | null } | null = null;
+let healthInFlight: Promise<SidecarHealth | null> | null = null;
+
 export async function sidecarHealth(ms = 3000): Promise<SidecarHealth | null> {
-  try {
-    const r = await fetch(`${SIDECAR}/health`, { cache: "no-store", signal: AbortSignal.timeout(ms) });
-    if (!r.ok) return null;
-    return (await r.json()) as SidecarHealth;
-  } catch {
-    return null;
-  }
+  const now = Date.now();
+  if (healthCache && now - healthCache.at < HEALTH_TTL_MS) return healthCache.value;
+  // Concurrent callers share one probe rather than each opening their own.
+  if (healthInFlight) return healthInFlight;
+  healthInFlight = (async () => {
+    try {
+      const r = await fetch(`${SIDECAR}/health`, { cache: "no-store", signal: AbortSignal.timeout(ms) });
+      const value = r.ok ? ((await r.json()) as SidecarHealth) : null;
+      healthCache = { at: Date.now(), value };
+      return value;
+    } catch {
+      healthCache = { at: Date.now(), value: null };
+      return null;
+    } finally {
+      healthInFlight = null;
+    }
+  })();
+  return healthInFlight;
 }
 
 function form(file: Buffer, filename: string, fields?: Record<string, string>): FormData {
@@ -54,8 +79,24 @@ export async function sidecarDetect(file: Buffer, model?: string): Promise<unkno
   return r.json();
 }
 
-export async function sidecarStt(file: Buffer, model?: string): Promise<{ text: string; language?: string }> {
-  const r = await postForm("/stt", form(file, "audio.wav", model ? { model } : undefined));
+export async function sidecarStt(
+  file: Buffer,
+  model?: string,
+  language?: string,
+  beamSize?: string,
+  initialPrompt?: string,
+  vadFilter?: string,
+): Promise<{ text: string; language?: string }> {
+  const extra: Record<string, string> = {};
+  if (model) extra.model = model;
+  // Accented-speech decoding aids (see model-service/app.py).
+  if (beamSize) extra.beam_size = beamSize;
+  if (initialPrompt) extra.initial_prompt = initialPrompt;
+  if (vadFilter) extra.vad_filter = vadFilter;
+  // Whisper language hint ("en"/"ja"; "" = auto-detect). Without forwarding
+  // this, the sidecar pinned its default and EN speech transcribed in JA mode.
+  if (language !== undefined) extra.language = language;
+  const r = await postForm("/stt", form(file, "audio.wav", Object.keys(extra).length ? extra : undefined));
   if (!r.ok) throw new Error(`sidecar stt ${r.status}`);
   return (await r.json()) as { text: string; language?: string };
 }

@@ -1,0 +1,54 @@
+=== PID 28400
+CWD : /home/ai-ccore/Documents/DEV/gesturelsm
+EXE : /usr/bin/python3.11
+CMD : /home/ai-ccore/Documents/DEV/gesturelsm/.venv/bin/python gesture_service.py 
+PPID: 1
+
+=== PID 34004
+CWD : /home/ai-ccore/Documents/DEV/voice/GPT-SoVITS
+EXE : /usr/bin/python3.11
+CMD : .venv/bin/python api_v2.py -a 127.0.0.1 -p 9880 -c GPT_SoVITS/configs/tts_infer.yaml 
+PPID: 1
+
+=== PID 34302
+CWD : /home/ai-ccore/Documents/DEV/voice/Applio
+EXE : /usr/bin/python3.11
+CMD : .venv/bin/python /home/ai-ccore/Documents/DEV/voice/voice_service.py 
+PPID: 1
+
+=== PID 988619
+CWD : /home/ai-ccore/Documents/DEV/vllm-voice
+EXE : /usr/bin/python3.11
+CMD : /home/ai-ccore/Documents/DEV/vllm-voice/.venv/bin/python /home/ai-ccore/Documents/DEV/vllm-voice/.venv/bin/vllm serve models/qwen3-30b-a3b-awq --host 127.0.0.1 --port 8807 --served-model-name qwen3-30b-a3b --tensor-parallel-size 2 --max-model-len 24576 --max-num-seqs 4 --gpu-memory-utilization 0.52 --enable-auto-tool-choice --tool-call-parser hermes --enable-prefix-caching 
+PPID: 1
+
+=== PID 991607
+CWD : /home/ai-ccore/Documents/DEV/ActionPlan-Code
+EXE : /usr/bin/python3.11
+CMD : ./venv/bin/python actionplan_service.py --port 8893 
+PPID: 1
+
+=== PID 2549141
+CWD : /home/ai-ccore/Documents/DEV/gesturelsm
+EXE : /usr/bin/python3.11
+CMD : .venv/bin/python gesture_service_prof.py 
+PPID: 1
+
+=== PID 3751625
+CWD : /home/ai-ccore/Documents/DEV/AICCORE Nexus/model-service
+EXE : /usr/bin/python3.11
+CMD : /home/ai-ccore/Documents/DEV/AICCORE Nexus/model-service/.venv/bin/python /home/ai-ccore/Documents/DEV/AICCORE Nexus/model-service/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 
+PPID: 1
+
+=== PID 3754260
+CWD : /home/ai-ccore/Documents/DEV/AICCORE Nexus
+EXE : /usr/bin/dash
+CMD : sh -c next start 
+PPID: 3754248
+
+=== PID 3754261
+CWD : /home/ai-ccore/Documents/DEV/AICCORE Nexus
+EXE : /usr/local/bin/node
+CMD : next-server (v15.5.19)                                                       
+PPID: 3754260
+

@@ -136,7 +136,34 @@ def detect(file: UploadFile = File(...), model: str = Form("yolo11n.pt")):
 
 # ---- speech to text (faster-whisper) ----
 @app.post("/stt")
-def stt(file: UploadFile = File(...), model: str = Form("small")):
+def stt(
+    file: UploadFile = File(...),
+    model: str = Form("small"),
+    language: str = Form("ja"),
+    # Decoding aids for ACCENTED speech (a Japanese speaker's English here).
+    # beam_size>1 recovers a lot of what greedy decoding mangles; initial_prompt
+    # biases the decoder toward the vocabulary this deployment actually uses
+    # (names, place names, product names) instead of similar-sounding words.
+    beam_size: int = Form(1),
+    initial_prompt: str = Form(""),
+    vad_filter: str = Form("0"),
+):
+    # Gateway sends registry ids like "faster-whisper-large-v3"; WhisperModel
+    # wants the bare size ("large-v3"). Strip the prefix so both forms work.
+    model = model.removeprefix("faster-whisper-")
+    # Serve "large-v3" with the turbo variant: ~5x faster decode, near-equal
+    # quality; the gateway keeps leasing under the registered large-v3 id.
+    #
+    # "near-equal" holds for clean native speech. It does NOT hold for accented
+    # speech: turbo has 4 decoder layers against large-v3's 32, and the decoder
+    # is exactly what recovers a word whose acoustics are ambiguous. A caller
+    # whose speaker is, say, a native Japanese speaker talking English wants the
+    # full model and can say so with "large-v3-full" — an explicit opt OUT of
+    # the substitution, leaving every existing caller on turbo unchanged.
+    if model == "large-v3":
+        model = "large-v3-turbo"
+    elif model == "large-v3-full":
+        model = "large-v3"
     try:
         from faster_whisper import WhisperModel  # type: ignore
         import tempfile, os
@@ -156,7 +183,20 @@ def stt(file: UploadFile = File(...), model: str = Form("small")):
             tf.write(data)
             path = tf.name
         try:
-            segments, info = _state[key].transcribe(path)
+            # beam_size=1: ~1.5-2x faster than the default 5, fine for
+            # conversational speech. language comes from the client (the app
+            # sends its character language; "" = whisper auto-detect).
+            segments, info = _state[key].transcribe(
+                path,
+                beam_size=max(1, int(beam_size)),
+                language=(language or None),
+                initial_prompt=(initial_prompt or None),
+                # Drop non-speech spans before decoding: with an accented
+                # speaker whisper otherwise "reads" breath and room tone as
+                # words and emits confident nonsense.
+                vad_filter=(str(vad_filter).lower() in ("1", "true", "yes")),
+                condition_on_previous_text=False,
+            )
             text = "".join(s.text for s in segments).strip()
         finally:
             os.unlink(path)

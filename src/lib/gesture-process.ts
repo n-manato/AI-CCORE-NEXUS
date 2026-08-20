@@ -25,15 +25,33 @@ function readPid(): number {
   }
 }
 
-export function isGestureProcessAlive(): boolean {
-  const pid = readPid();
-  if (!pid) return false;
+// Recover processes whose pid file was lost or overwritten.  This can happen
+// across deployments, and previously left GestureLSM permanently resident even
+// after its runtime config was disabled.
+function gesturePids(): number[] {
+  const pids = new Set<number>();
+  const tracked = readPid();
+  if (tracked) pids.add(tracked);
   try {
-    process.kill(pid, 0); // signal 0 = existence check
-    return true;
-  } catch {
-    return false;
+    for (const entry of fs.readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8").replaceAll("\0", " ");
+        if (cmdline.includes("gesture_service.py")) pids.add(Number(entry));
+      } catch { /* process exited while scanning */ }
+    }
+  } catch { /* non-Linux runtime: fall back to the pid file */ }
+  return [...pids];
+}
+
+export function isGestureProcessAlive(): boolean {
+  for (const pid of gesturePids()) {
+    try {
+      process.kill(pid, 0); // signal 0 = existence check
+      return true;
+    } catch { /* stale pid */ }
   }
+  return false;
 }
 
 // Start gesture-service if not already up (idempotent): no-op if the tracked pid
@@ -61,8 +79,7 @@ export async function startGestureService(): Promise<void> {
 
 // Stop the gesture-service process group (frees GPU0). Idempotent.
 export function stopGestureService(): void {
-  const pid = readPid();
-  if (pid) {
+  for (const pid of gesturePids()) {
     try {
       process.kill(-pid, "SIGTERM"); // whole group (run.sh -> python -> uvicorn)
     } catch {

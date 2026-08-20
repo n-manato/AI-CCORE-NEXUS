@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "suite": "world-perception-smoke-pack",
+  "cases": [
+    {
+      "id": "corridor",
+      "file": "inputs/01_corridor.png",
+      "requiredConcepts": [
+        "path",
+        "building",
+        "tree",
+        "archway"
+      ],
+      "depthAssertions": [
+        {
+          "near": "foreground_path",
+          "far": "archway"
+        },
+        {
+          "near": "foreground_tree",
+          "far": "archway"
+        }
+      ],
+      "segmentationAssertions": [
+        {
+          "concept": "path",
+          "minimumInstances": 1
+        },
+        {
+          "concept": "building",
+          "minimumInstances": 2
+        },
+        {
+          "concept": "tree",
+          "minimumInstances": 3
+        }
+      ],
+      "navigationAssertions": [
+        {
+          "region": "central_path",
+          "walkable": true
+        },
+        {
+          "region": "left_wall",
+          "walkable": false
+        },
+        {
+          "region": "right_wall",
+          "walkable": false
+        }
+      ],
+      "relationAssertions": [
+        {
+          "subject": "central_path",
+          "predicate": "leads_to",
+          "object": "archway"
+        }
+      ]
+    },
+    {
+      "id": "water_bridge",
+      "file": "inputs/02_water_bridge.png",
+      "requiredConcepts": [
+        "water",
+        "bridge",
+        "tower",
+        "boat"
+      ],
+      "depthAssertions": [
+        {
+          "near": "boat",
+          "far": "tower"
+        },
+        {
+          "near": "bridge_foreground",
+          "far": "tower"
+        }
+      ],
+      "navigationAssertions": [
+        {
+          "region": "bridge_deck",
+          "walkable": true
+        },
+        {
+          "region": "water",
+          "walkable": false
+        }
+      ],
+      "relationAssertions": [
+        {
+          "subject": "bridge",
+          "predicate": "leads_to",
+          "object": "tower"
+        },
+        {
+          "subject": "boat",
+          "predicate": "occludes",
+          "object": "water"
+        }
+      ]
+    },
+    {
+      "id": "adjacent_towers",
+      "file": "inputs/03_adjacent_towers.png",
+      "requiredConcepts": [
+        "tower",
+        "path"
+      ],
+      "segmentationAssertions": [
+        {
+          "concept": "tower",
+          "exactInstances": 2,
+          "mustRemainSeparate": true
+        },
+        {
+          "concept": "path",
+          "minimumInstances": 1
+        }
+      ],
+      "navigationAssertions": [
+        {
+          "region": "foreground_path",
+          "walkable": true
+        },
+        {
+          "region": "tower_a",
+          "walkable": false
+        },
+        {
+          "region": "tower_b",
+          "walkable": false
+        }
+      ]
+    },
+    {
+      "id": "ambiguous_fantasy",
+      "file": "inputs/04_ambiguous_fantasy.png",
+      "requiredConcepts": [
+        "floating terrain",
+        "portal",
+        "path"
+      ],
+      "uncertaintyAssertions": [
+        {
+          "region": "unsupported_path",
+          "minimumUncertainty": 0.45
+        },
+        {
+          "region": "hidden_or_impossible_geometry",
+          "mustNotClaimMetricTruth": true
+        }
+      ],
+      "navigationAssertions": [
+        {
+          "region": "unsupported_path",
+          "walkable": "uncertain"
+        }
+      ]
+    }
+  ]
+}

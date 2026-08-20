@@ -34,8 +34,8 @@ Cline → MCP Servers → "Configure MCP Servers" (or Settings → MCP), add:
 {
   "mcpServers": {
     "nexus-tools": {
-      "command": "/home/ai-ccore/Documents/DEV/AICCORE Nexus/mcp-tools/.venv/bin/python",
-      "args": ["/home/ai-ccore/Documents/DEV/AICCORE Nexus/mcp-tools/server.py"],
+      "command": "/home/ai-ccore/Documents/DEV/AICCORE-Nexus/mcp-tools/.venv/bin/python",
+      "args": ["/home/ai-ccore/Documents/DEV/AICCORE-Nexus/mcp-tools/server.py"],
       "disabled": false
     }
   }

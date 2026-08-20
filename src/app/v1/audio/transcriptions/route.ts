@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const t0 = Date.now();
   const fd = await req.formData().catch(() => null);
   const model = (fd?.get("model") as string) || "faster-whisper-medium";
-  const gate = await gateRequest(req, PATH, model);
+  const gate = await gateRequest(req, PATH, model, { skipModelLease: true });
   if (!gate.ok) return gate.response;
   try {
     const file = fd?.get("file");
@@ -23,7 +23,18 @@ export async function POST(req: Request) {
     if (health?.capabilities.stt) {
       try {
         const buf = Buffer.from(await (file as File).arrayBuffer());
-        const result = await sidecarStt(buf, model);
+        const language = fd?.get("language");
+        const beamSize = fd?.get("beam_size");
+        const initialPrompt = fd?.get("initial_prompt");
+        const vadFilter = fd?.get("vad_filter");
+        const result = await sidecarStt(
+          buf,
+          model,
+          typeof language === "string" ? language : undefined,
+          typeof beamSize === "string" ? beamSize : undefined,
+          typeof initialPrompt === "string" ? initialPrompt : undefined,
+          typeof vadFilter === "string" ? vadFilter : undefined,
+        );
         await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, latencyMs: Date.now() - t0, model });
         return NextResponse.json(result, { headers: corsHeaders(req.headers.get("origin")) });
       } catch {

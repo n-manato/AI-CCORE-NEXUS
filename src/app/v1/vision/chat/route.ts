@@ -5,13 +5,13 @@ import { appIdToTag, ollamaHasTag, ollamaVision, toAppId } from "@/lib/ollama";
 export const dynamic = "force-dynamic";
 
 const PATH = "/v1/vision/chat";
-const DEFAULT_VISION = "qwen2.5vl:7b";
+const DEFAULT_VISION = "qwen3.6-27b:Q8_0";
 
 // POST /v1/vision/chat - image question answering (Ollama VLM). The image is not stored.
 export async function POST(req: Request) {
   const t0 = Date.now();
   const form = await req.formData().catch(() => null);
-  const modelField = (form?.get("model") as string) || "qwen2.5-vl-7b";
+  const modelField = (form?.get("model") as string) || "qwen3.6-27b";
   const gate = await gateRequest(req, PATH, toAppId(modelField));
   if (!gate.ok) return gate.response;
   try {
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       }
       await recordUsage({ userId: gate.auth.userId, apiName: gate.apiName, category: gate.category, isError: false, model: modelField });
       return NextResponse.json(
-        { object: "mock", api: "Vision QA", message: "No vision model is pulled in Ollama yet. Pull qwen2.5vl and Sync." },
+        { object: "mock", api: "Vision QA", message: "No vision model is pulled in Ollama yet. Pull qwen3.6-27b:Q8_0 and Sync." },
         { headers: corsHeaders(req.headers.get("origin")) },
       );
     } catch {

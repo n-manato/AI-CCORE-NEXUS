@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { appIdToTag } from "@/lib/ollama";
-import { forecastVram, type ForecastModel, type ForecastResult } from "@/lib/vram";
+import { forecastVram, gpuAffinityForModel, type ForecastModel, type ForecastResult } from "@/lib/vram";
 import type { DevicePlan, StartupPolicy } from "@/lib/constants";
 
 // A fully-resolved runtime row used by the Model Runtime table (serializable for
@@ -105,6 +105,7 @@ export function rowsToForecastModels(rows: RuntimeRow[]): ForecastModel[] {
     maxConcurrent: r.maxConcurrent,
     multiGpuSupported: r.multiGpuSupported,
     separateProcessPerRequest: r.separateProcessPerRequest,
+    gpuAffinity: gpuAffinityForModel(r.modelId),
   }));
 }
 

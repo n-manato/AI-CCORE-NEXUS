@@ -67,11 +67,11 @@ export async function POST(req: Request) {
     ),
   );
 
-  // Reflect the new config (Enabled -> API status) immediately, then enact it:
-  // load Always-Running models / unload disabled ones now (in the background, so
-  // Apply returns fast). No manual Load button needed.
-  await syncBackends().then((result) => observeResidentModels(result.running)).catch(() => {});
-  void reconcileModels().catch(() => {});
+  // Enact the persisted configuration before refreshing backend state.  Doing
+  // this in the opposite order makes Apply return a snapshot of the old state;
+  // the UI then appears to ignore the click until the next worker tick.
+  await reconcileModels();
+  await syncBackends().then((result) => observeResidentModels(result.running));
 
   await prisma.vramForecastSnapshot.create({
     data: {
