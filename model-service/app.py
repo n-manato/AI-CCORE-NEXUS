@@ -173,7 +173,14 @@ def stt(
             if key not in _state:
                 if _cuda():
                     try:
-                        _state[key] = WhisperModel(model, device="cuda", compute_type="float16")
+                        # int8 weights, fp16 compute: large-v3 held 5.6 GB of GPU0
+                        # in float16 — room the LLM on the same card needs.
+                        # WHISPER_COMPUTE_TYPE=float16 restores the old load.
+                        _state[key] = WhisperModel(
+                            model,
+                            device="cuda",
+                            compute_type=os.environ.get("WHISPER_COMPUTE_TYPE", "int8_float16"),
+                        )
                     except Exception:
                         _state[key] = WhisperModel(model, device="cpu", compute_type="int8")
                 else:
