@@ -86,6 +86,10 @@ async def generate(
     seed: int = Form(42),
     decimation_target: int = Form(1_000_000),
     texture_size: int = Form(2048),
+    # 0 = keep the checkpoint's own sampler settings (steps=12). Raise for a
+    # quality-first run; the cost is time, not VRAM.
+    steps: int = Form(0),
+    guidance_strength: float = Form(0.0),
 ):
     try:
         data = await image.read()
@@ -100,6 +104,8 @@ async def generate(
             seed=seed,
             decimation_target=decimation_target,
             texture_size=texture_size,
+            steps=steps,
+            guidance_strength=guidance_strength,
         )
         return _glb_response(glb)
     except ValueError as e:

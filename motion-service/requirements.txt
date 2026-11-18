@@ -1,6 +1,0 @@
-# Light stub deps (pipeline works without HY-Motion). The heavy HY-Motion stack
-# (torch+cu124, smplx, pytorch3d, huggingface_hub) is installed during Phase 0.
-fastapi>=0.110
-uvicorn[standard]>=0.29
-numpy>=1.24
-pydantic>=2.5

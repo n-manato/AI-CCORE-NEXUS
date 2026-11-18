@@ -14,4 +14,7 @@ PY
 )"
 export LD_LIBRARY_PATH="${NVLIB}:${LD_LIBRARY_PATH:-}"
 
+# GPU0 + CUDA MPS (KEHAI scripts/pcb-mps.sh, 2026-11-05): join the shared context when it
+# runs, so Whisper, TTS and GestureLSM cost the 60 fps render one context, not three.
+eval "$(/home/ai-ccore/Documents/DEV/KEHAI/scripts/pcb-mps.sh env 2>/dev/null)"
 exec uvicorn app:app --host 127.0.0.1 --port "${PORT:-8000}"

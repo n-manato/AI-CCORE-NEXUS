@@ -20,5 +20,14 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // Python の仮想環境には gradio 等の TypeScript ソースが含まれており、
+    // include の "**/*.ts" が拾って型チェックが失敗する。stack/ をこの場所へ
+    // 移設した 2026-08-06 以降 npm run build が通らなくなっていた。
+    // .gitignore は "**/.venv/" のみで、ドット無しの "venv" を拾えていない。
+    "**/venv/**",
+    "**/.venv/**",
+    "**/site-packages/**"
+  ]
 }

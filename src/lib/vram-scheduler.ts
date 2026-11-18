@@ -9,9 +9,11 @@ import { SIDECAR_MODELS, sidecarHealth, sidecarUnload } from "@/lib/sidecar";
 import { MOTION_MODELS, motionHealth } from "@/lib/motion";
 import { GESTURE_MODELS, gestureHealth } from "@/lib/gesture";
 import { TRELLIS_MODELS, trellisHealth } from "@/lib/trellis";
+import { GENESIS_MODELS, genesisHealth } from "@/lib/genesis";
 import { isGestureProcessAlive, startGestureService, stopGestureService } from "@/lib/gesture-process";
 import { isMotionProcessAlive, startMotionService, stopMotionService } from "@/lib/motion-process";
 import { isTrellisProcessAlive, startTrellisService, stopTrellisService } from "@/lib/trellis-process";
+import { isGenesisProcessAlive, startGenesisService, stopGenesisService } from "@/lib/genesis-process";
 import { isTtsProcessAlive, startTtsService, stopTtsService } from "@/lib/tts-process";
 import { TTS_MODEL_ID, ttsHealth } from "@/lib/tts";
 import { GPU_USABLE_VRAM_GB, GPU_VRAM_RESERVE_GB } from "@/lib/constants";
@@ -84,6 +86,7 @@ async function actualResidentModelIds(): Promise<Set<string>> {
     if (isMotionProcessAlive()) for (const id of Object.keys(MOTION_MODELS)) state.resident.add(id);
     if (isGestureProcessAlive()) for (const id of Object.keys(GESTURE_MODELS)) state.resident.add(id);
     if (isTrellisProcessAlive()) for (const id of Object.keys(TRELLIS_MODELS)) state.resident.add(id);
+    if (isGenesisProcessAlive()) for (const id of Object.keys(GENESIS_MODELS)) state.resident.add(id);
     // Preserve a GPT-SoVITS process observed after a gateway restart. It remains
     // eligible for normal On Demand eviction.
     if (isTtsProcessAlive()) state.resident.add(TTS_MODEL_ID);
@@ -159,6 +162,7 @@ async function unloadModel(m: RegistryRow): Promise<void> {
   else if (m.modelId in MOTION_MODELS) stopMotionService();
   else if (m.modelId in GESTURE_MODELS) stopGestureService();
   else if (m.modelId in TRELLIS_MODELS) stopTrellisService();
+  else if (m.modelId in GENESIS_MODELS) stopGenesisService();
   else if (m.modelId === TTS_MODEL_ID) stopTtsService();
   else throw new Error(`No unload adapter for ${m.modelId}`);
 
@@ -203,6 +207,16 @@ async function loadModel(m: RegistryRow): Promise<void> {
     const tdeadline = Date.now() + 120_000;
     while (!(await trellisHealth(1500))) {
       if (Date.now() >= tdeadline) throw new Error("trellis service did not become ready within 120s");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  else if (m.modelId in GENESIS_MODELS) {
+    // Genesis3D creates jobs and returns immediately, so this lease is momentary:
+    // it only guarantees the orchestrator is up before the job is enqueued.
+    await startGenesisService();
+    const gdeadline = Date.now() + 90_000;
+    while (!(await genesisHealth(1500))) {
+      if (Date.now() >= gdeadline) throw new Error("genesis3d service did not become ready within 90s");
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }

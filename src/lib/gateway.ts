@@ -196,6 +196,12 @@ export const ENDPOINT_API: Record<string, { apiName: string; category: Category 
   "/v1/motion/stream": { apiName: "Gesture Generation", category: "Motion" },
   "/v1/robot-motion/commands": { apiName: "Robot Motion", category: "Motion" },
   "/v1/3d/generations": { apiName: "3D Generation", category: "3D" },
+  // Genesis3D: async image -> rigged VRM 1.0. Separate API name from "3D
+  // Generation" (TRELLIS, sync GLB) so admins can enable/track them independently.
+  "/v1/3d/characters": { apiName: "3D Character", category: "3D" },
+  "/v1/3d/characters/{id}": { apiName: "3D Character", category: "3D" },
+  "/v1/3d/characters/{id}/results": { apiName: "3D Character", category: "3D" },
+  "/v1/3d/characters/{id}/cancel": { apiName: "3D Character", category: "3D" },
 };
 
 // ---- Authentication ----

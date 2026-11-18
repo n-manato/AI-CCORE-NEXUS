@@ -5,6 +5,7 @@ import { sidecarHealth, SIDECAR_MODELS } from "@/lib/sidecar";
 import { motionHealth, MOTION_MODELS } from "@/lib/motion";
 import { gestureHealth, GESTURE_MODELS } from "@/lib/gesture";
 import { trellisHealth, TRELLIS_MODELS } from "@/lib/trellis";
+import { genesisHealth, GENESIS_MODELS } from "@/lib/genesis";
 import { ttsHealth, TTS_MODEL_ID } from "@/lib/tts";
 import { API_MODEL } from "@/lib/constants";
 
@@ -40,6 +41,13 @@ const TRELLIS_API: Record<string, string> = {
   "3D Generation": "image_to_3d",
 };
 
+// api_status.apiName -> genesis3d capability key. Genesis3D holds no weights of
+// its own; /health reports whether the orchestrator, TRELLIS.2 and Blender are all
+// reachable, which is what "serviceable" means for this API.
+const GENESIS_API: Record<string, string> = {
+  "3D Character": "image_to_vrm",
+};
+
 // Syncs every label in the app to the REAL state of the backends:
 //  - Ollama for LLM Chat / Vision QA (+ their models)
 //  - Python sidecar for OCR / detection / STT / TTS / background removal
@@ -68,8 +76,14 @@ export async function syncBackends(): Promise<SyncResult> {
   const gestureLoaded = ghealth?.loaded ?? {};
 
   const thealth = await trellisHealth();
+  const genHealth = await genesisHealth();
   const trellisCaps = thealth?.capabilities ?? {};
   const trellisLoaded = thealth?.loaded ?? {};
+  // Genesis3D is serviceable only when it can actually reach its dependencies.
+  const genesisUp = !!genHealth?.ok;
+  const genesisCaps: Record<string, boolean> = {
+    image_to_vrm: genesisUp && !!genHealth?.trellis_reachable && !!genHealth?.blender,
+  };
 
   // Rem voice stack (voice_service :9881 -> GPT-SoVITS :9880) backing `gpt-sovits`.
   const ttsUp = (await ttsHealth()) !== null;
@@ -162,6 +176,18 @@ export async function syncBackends(): Promise<SyncResult> {
       .catch(() => {});
   }
 
+  // --- Genesis3D-backed models ---
+  // Same contract as the other sidecars: `installed` stays registry-managed so the
+  // model remains UI-controllable while its process is down; currentStatus tracks
+  // the live orchestrator (:8820).
+  for (const appId of Object.keys(GENESIS_MODELS)) {
+    installed.push(appId);
+    if (genesisUp) running.push(appId);
+    await prisma.modelRuntimeState
+      .update({ where: { modelId: appId }, data: { currentStatus: genesisUp ? "Running" : "Stopped", actualDevice: genesisUp ? "GPU0" : null } })
+      .catch(() => {});
+  }
+
   // --- GPT-SoVITS voice stack backing `gpt-sovits` (TTS) ---
   // installed stays registry-managed so the model is UI-controllable even when the
   // stack is down; currentStatus tracks the live voice_service (:9881) process.
@@ -173,7 +199,7 @@ export async function syncBackends(): Promise<SyncResult> {
   }
 
   // --- Models with no backend at all -> not installed, stopped (honest) ---
-  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS), ...Object.keys(GESTURE_MODELS), ...Object.keys(TRELLIS_MODELS), TTS_MODEL_ID];
+  const managed = [...Object.keys(OLLAMA_MAP), ...Object.keys(SIDECAR_MODELS), ...Object.keys(MOTION_MODELS), ...Object.keys(GESTURE_MODELS), ...Object.keys(TRELLIS_MODELS), ...Object.keys(GENESIS_MODELS), TTS_MODEL_ID];
   await prisma.modelRuntimeState
     .updateMany({ where: { modelId: { notIn: managed }, currentStatus: { not: "Error" } }, data: { currentStatus: "Stopped", currentVramMb: 0, actualDevice: null } })
     .catch(() => {});
@@ -248,6 +274,12 @@ export async function syncBackends(): Promise<SyncResult> {
       // serviceable and must not make the server dashboard Degraded.
       status = trellisCaps[cap] || isEnabled("trellis-2") ? "Online" : "Offline";
       if (trellisCaps[cap]) backend = "TRELLIS";
+    } else if (api.apiName in GENESIS_API) {
+      const cap = GENESIS_API[api.apiName];
+      // Same rule as TRELLIS: an enabled On Demand orchestrator that happens to be
+      // stopped is still serviceable — the VRAM scheduler starts it on first use.
+      status = genesisCaps[cap] || isEnabled("genesis3d") ? "Online" : "Offline";
+      if (genesisCaps[cap]) backend = "Genesis3D";
     } else {
       status = "Not Installed"; // no backend wired yet
     }

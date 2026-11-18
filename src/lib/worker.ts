@@ -5,6 +5,7 @@ import { OLLAMA_MAP, ollamaSetLoaded, ollamaRunning } from "@/lib/ollama";
 import { startMotionService, stopMotionService, isMotionProcessAlive } from "@/lib/motion-process";
 import { startGestureService, stopGestureService, isGestureProcessAlive } from "@/lib/gesture-process";
 import { startTrellisService, stopTrellisService, isTrellisProcessAlive } from "@/lib/trellis-process";
+import { startGenesisService, stopGenesisService, isGenesisProcessAlive } from "@/lib/genesis-process";
 import { startTtsService, stopTtsService, isTtsProcessAlive } from "@/lib/tts-process";
 import { trellisHealth } from "@/lib/trellis";
 import { noteModelResidency, observeResidentModels } from "@/lib/vram-scheduler";
@@ -153,6 +154,23 @@ export async function reconcileModels(): Promise<void> {
         stopTrellisService();
         noteModelResidency(trellis.modelId, false);
       }
+    }
+  }
+
+  // Genesis3D: a separate process the enable toggle starts/stops, like HY-Motion.
+  // It has no pinned/offloaded distinction (it holds no weights itself — the heavy
+  // models run as short-lived subprocesses), so Always Running simply means "up".
+  const genesis = models.find((m) => m.modelId === "genesis3d");
+  if (genesis?.runtimeConfig) {
+    const cfg = genesis.runtimeConfig;
+    const isUp = isGenesisProcessAlive();
+    if (!cfg.enabled || cfg.startupPolicy === "Disabled") {
+      if (isUp) {
+        stopGenesisService();
+        noteModelResidency(genesis.modelId, false);
+      }
+    } else if (cfg.startupPolicy === "Always Running" && !isUp) {
+      await startGenesisService();
     }
   }
 }

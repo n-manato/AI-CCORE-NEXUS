@@ -1,8 +1,0 @@
-.venv/
-__pycache__/
-*.pyc
-pool_cache/
-assets/HY-Motion-1.0/
-assets/body_models/
-assets/pmx/
-*.vmd

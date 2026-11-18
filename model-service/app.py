@@ -135,6 +135,22 @@ def detect(file: UploadFile = File(...), model: str = Form("yolo11n.pt")):
 
 
 # ---- speech to text (faster-whisper) ----
+def _pcm16k_from_wav(data: bytes):
+    """float32 samples of a 16 kHz mono 16-bit PCM WAV, else None."""
+    try:
+        import io
+        import wave
+
+        import numpy as np
+
+        with wave.open(io.BytesIO(data)) as w:
+            if w.getframerate() != 16000 or w.getnchannels() != 1 or w.getsampwidth() != 2 or w.getcomptype() != "NONE":
+                return None
+            return np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768.0
+    except Exception:  # noqa: BLE001 — not a plain WAV: the file path handles it
+        return None
+
+
 @app.post("/stt")
 def stt(
     file: UploadFile = File(...),
@@ -186,15 +202,24 @@ def stt(
                 else:
                     _state[key] = WhisperModel(model, device="cpu", compute_type="int8")
         data = file.file.read()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
-            tf.write(data)
-            path = tf.name
+        # 16 kHz mono 16-bit WAV (what KEHAI sends): hand whisper the samples
+        # themselves. Writing a temp file and letting faster-whisper decode it
+        # through PyAV cost 86 ms of a 245 ms short-utterance request (measured
+        # 2026-11-13) — the transcript then arrived after KEHAI's endpoint.
+        # Anything else (ogg, other rates) still goes through the file.
+        path = None
+        source = _pcm16k_from_wav(data)
+        if source is None:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+                tf.write(data)
+                path = tf.name
+            source = path
         try:
             # beam_size=1: ~1.5-2x faster than the default 5, fine for
             # conversational speech. language comes from the client (the app
             # sends its character language; "" = whisper auto-detect).
             segments, info = _state[key].transcribe(
-                path,
+                source,
                 beam_size=max(1, int(beam_size)),
                 language=(language or None),
                 initial_prompt=(initial_prompt or None),
@@ -203,10 +228,20 @@ def stt(
                 # words and emits confident nonsense.
                 vad_filter=(str(vad_filter).lower() in ("1", "true", "yes")),
                 condition_on_previous_text=False,
+                # One decoding pass. The default re-decodes at temperature 0.2,
+                # 0.4 ... 1.0 (five samples each) whenever a result looks unsure,
+                # and accented speech from 2-3 m away often does: two PROTO
+                # segments took 3.1 s and 2.6 s instead of ~0.4 s (2026-10-23).
+                # In a conversation a fast first guess beats a slow second one.
+                # WHISPER_TEMPERATURE="0,0.2,0.4,0.6,0.8,1" restores the default.
+                temperature=tuple(
+                    float(t) for t in os.environ.get("WHISPER_TEMPERATURE", "0").split(",")
+                ),
             )
             text = "".join(s.text for s in segments).strip()
         finally:
-            os.unlink(path)
+            if path:
+                os.unlink(path)
         return {"model": model, "language": info.language, "text": text}
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": str(e)}, status_code=500)

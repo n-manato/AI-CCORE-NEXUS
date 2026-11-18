@@ -43,6 +43,30 @@ DEFAULT_RESOLUTION = os.environ.get("TRELLIS_RESOLUTION", "512")
 _MAX_RESOLUTION = int(os.environ.get("TRELLIS_MAX_RESOLUTION", "1024"))
 ALLOWED_RESOLUTIONS = [r for r in PIPELINE_TYPE if int(r) <= _MAX_RESOLUTION]
 
+
+def _sampler_overrides(steps: int, guidance_strength: float) -> dict:
+    """Per-request sampler overrides for pipeline.run().
+
+    The shipped pipeline.json pins steps=12 on all three samplers — tuned for
+    throughput. Quality-first callers (Genesis3D's face track) would rather
+    trade time for detail. 0 means "leave the checkpoint default alone", so an
+    omitted field reproduces the previous behaviour byte for byte.
+    """
+    if steps <= 0 and guidance_strength <= 0:
+        return {}
+    params: dict = {}
+    if steps > 0:
+        params["steps"] = int(steps)
+    if guidance_strength > 0:
+        params["guidance_strength"] = float(guidance_strength)
+    return {
+        key: dict(params)
+        for key in ("sparse_structure_sampler_params",
+                    "shape_slat_sampler_params",
+                    "tex_slat_sampler_params")
+    }
+
+
 # nvdiffrast index limit used verbatim by the official example.
 _SIMPLIFY_LIMIT = 16777216
 _AABB = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
@@ -133,6 +157,8 @@ class TrellisRunner:
         seed: int = 42,
         decimation_target: int = 1_000_000,
         texture_size: int = 2048,
+        steps: int = 0,
+        guidance_strength: float = 0.0,
     ) -> bytes:
         """Single image -> GLB bytes. Raises NotImplementedError in stub mode."""
         if resolution not in PIPELINE_TYPE:
@@ -167,6 +193,7 @@ class TrellisRunner:
                     seed=seed,
                     preprocess_image=True,
                     pipeline_type=PIPELINE_TYPE[resolution],
+                    **_sampler_overrides(steps, guidance_strength),
                 )[0]
                 mesh.simplify(_SIMPLIFY_LIMIT)  # nvdiffrast limit
                 glb = o_voxel.postprocess.to_glb(

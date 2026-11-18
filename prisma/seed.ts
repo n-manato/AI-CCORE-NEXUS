@@ -139,6 +139,13 @@ const MODELS: ModelSeed[] = [
   // steady reservation — using it here would spuriously mark a lone 24GB GPU "Over
   // Limit". The runtime scheduler still guards real OOM via live nvidia-smi.
   { modelId: "trellis-2", category: "3D", function: "Image → PBR-textured 3D asset (GLB)", modelName: "TRELLIS.2-4B", backend: "TRELLIS", installed: false, vmin: 14, vmax: 18, rule: "1GPU", multi: false, policy: "On Demand", runtime: "Sync", size: "XLarge", enabled: false, maxConcurrent: 1, state: "Stopped" },
+  // Genesis3D holds NO weights of its own: it orchestrates short-lived subprocesses
+  // (RMBG-2.0, Blender, later CharacterGen/UniRig) on GPU0 and reaches TRELLIS.2 on
+  // GPU1 over HTTP. The VRAM range is what those subprocesses peak at, not a steady
+  // reservation. Jobs are asynchronous and run for minutes, so the scheduler must
+  // never evict it mid-job — see vram-scheduler.ts (genesis3d is not an eviction
+  // candidate) and genesis-process.ts.
+  { modelId: "genesis3d", category: "3D", function: "Image → rigged VRM 1.0 character (multi-candidate + auto evaluation)", modelName: "Genesis3D", backend: "Genesis3D", installed: false, vmin: 3, vmax: 14, rule: "1GPU", multi: false, policy: "On Demand", runtime: "Job", size: "Large", enabled: false, maxConcurrent: 1, state: "Stopped" },
 ];
 
 function devicePlan(m: ModelSeed): string {
@@ -184,6 +191,7 @@ const APIS: ApiSeed[] = [
   { apiName: "Motion Generation", category: "Motion", status: "Offline", model: "HY-Motion 1.0", backend: "HY-Motion", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "English text → MMD .vmd body motion (HY-Motion 1.0)." },
   { apiName: "Robot Motion", category: "Motion", status: "Error", model: "Custom preset controller", backend: "Custom", mode: "Real-time", usesGpu: false, queue: 0, running: 0, avg: 0, errors: 3, description: "Robot motion controller (backend error)." },
   { apiName: "3D Generation", category: "3D", status: "Not Installed", model: null, backend: "TRELLIS", mode: "Sync", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Single image → PBR-textured 3D asset (GLB) via TRELLIS.2 (not installed)." },
+  { apiName: "3D Character", category: "3D", status: "Not Installed", model: null, backend: "Genesis3D", mode: "Job", usesGpu: true, queue: 0, running: 0, avg: 0, errors: 0, description: "Single image → rigged VRM 1.0 character via Genesis3D. Asynchronous: POST returns a job_id, poll /v1/3d/characters/{id} (not installed)." },
 ];
 
 async function clearAll() {

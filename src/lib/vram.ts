@@ -35,6 +35,9 @@ export function gpuAffinityForModel(modelId: string): "GPU0" | "GPU1" | undefine
     case "gesturelsm-1": return "GPU0";
     case "gpt-sovits":
     case "trellis-2": return "GPU1";
+    // Genesis3D owns GPU0: it runs CharacterGen / UniRig / the evaluator / Blender
+    // there, and reaches TRELLIS.2 on GPU1 over HTTP instead of loading onto it.
+    case "genesis3d": return "GPU0";
     default: return undefined;
   }
 }
